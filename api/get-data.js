@@ -1,25 +1,33 @@
+// api/get-data.js
+
 export default async function handler(req, res) {
-  const { GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO } = process.env;
-
-  const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/data.json`;
-
   try {
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `token ${GITHUB_TOKEN}`,
-        Accept: 'application/vnd.github.v3+json',
-      },
-    });
+    const owner = process.env.GITHUB_OWNER;
+    const repo = process.env.GITHUB_REPO;
+    const token = process.env.GITHUB_TOKEN;
+    const filePath = req.query.path || "data.json"; // nombre del archivo a leer
+    const branch = "main";
+
+    const response = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github.v3+json",
+        },
+      }
+    );
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: 'No se pudo leer el archivo' });
+      throw new Error(`Error al leer ${filePath}: ${response.statusText}`);
     }
 
-    const data = await response.json();
-    const content = Buffer.from(data.content, 'base64').toString('utf8');
+    const file = await response.json();
+    const content = Buffer.from(file.content, "base64").toString("utf8");
 
-    res.status(200).json(JSON.parse(content));
+    res.status(200).json({ success: true, content });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error(error);
+    res.status(500).json({ success: false, message: error.message });
   }
 }

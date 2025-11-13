@@ -1,78 +1,37 @@
+// src/hooks/useCompanyData.js
+import { useState, useEffect } from "react";
+import { useRemoteData } from "./useRemoteData";
 
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { useCompany } from '@/App';
+export function useCompanyData(key) {
+  const [data, setData] = useState([]);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const { getData, saveData } = useRemoteData("empresa_datos.json");
 
-export function useCompanyData(storageKey) {
-    const { activeCompany } = useCompany();
-    const [data, setData] = useState([]);
-    const [isLoaded, setIsLoaded] = useState(false); // New loading state
-    const isMounted = useRef(false);
-    
-    const companyStorageKey = activeCompany ? `${activeCompany.id}-${storageKey}` : null;
+  // 🔹 Cargar desde localStorage y GitHub al iniciar
+  useEffect(() => {
+    const local = JSON.parse(localStorage.getItem(key) || "[]");
+    setData(local);
 
-    useEffect(() => {
-        isMounted.current = true;
-        setIsLoaded(false); // Reset on key change
+    // Sincronizar con GitHub
+    getData().then((remote) => {
+      if (remote[key]) {
+        setData(remote[key]);
+        localStorage.setItem(key, JSON.stringify(remote[key]));
+      }
+      setIsLoaded(true);
+    });
+  }, [key]);
 
-        if (companyStorageKey) {
-            try {
-                const stored = localStorage.getItem(companyStorageKey);
-                if (isMounted.current) {
-                    setData(stored ? JSON.parse(stored) : []);
-                }
-            } catch (error) {
-                console.error(`Error parsing ${companyStorageKey} from localStorage`, error);
-                if (isMounted.current) {
-                    setData([]);
-                }
-            } finally {
-                if(isMounted.current) {
-                    setIsLoaded(true); // Mark as loaded
-                }
-            }
-        } else {
-            if (isMounted.current) {
-                setData([]);
-                setIsLoaded(true); // Also loaded if no key
-            }
-        }
-        return () => {
-            isMounted.current = false;
-        };
-    }, [companyStorageKey]);
+  // 🔹 Guardar local y remoto
+  const save = async (newData) => {
+    setData(newData);
+    localStorage.setItem(key, JSON.stringify(newData));
 
-    const saveData = useCallback((newData, options = {}) => {
-        if (companyStorageKey) {
-            localStorage.setItem(companyStorageKey, JSON.stringify(newData));
-            if (isMounted.current && !options.silent) {
-                setData(newData);
-            }
-            // Dispatch event for other components to listen to storage changes
-            window.dispatchEvent(new CustomEvent('storage-updated', { detail: { key: companyStorageKey }}));
-        }
-    }, [companyStorageKey]);
+    // Actualizar GitHub remoto
+    const remote = await getData();
+    remote[key] = newData;
+    await saveData(remote);
+  };
 
-    // Listener for external storage changes (like restore)
-    useEffect(() => {
-        const handleStorageUpdate = (event) => {
-            if (event.detail.key === companyStorageKey) {
-                try {
-                    const stored = localStorage.getItem(companyStorageKey);
-                    if (isMounted.current) {
-                        setData(stored ? JSON.parse(stored) : []);
-                    }
-                } catch (error) {
-                    console.error(`Error reloading ${companyStorageKey} from localStorage`, error);
-                }
-            }
-        };
-
-        window.addEventListener('storage-updated', handleStorageUpdate);
-        return () => {
-            window.removeEventListener('storage-updated', handleStorageUpdate);
-        };
-    }, [companyStorageKey]);
-
-
-    return [data, saveData, isLoaded]; // Return loading state
+  return [data, save, isLoaded];
 }
