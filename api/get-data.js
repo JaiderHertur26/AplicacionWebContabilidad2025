@@ -5,7 +5,7 @@ export default async function handler(req, res) {
     const owner = process.env.GITHUB_OWNER;
     const repo = process.env.GITHUB_REPO;
     const token = process.env.GITHUB_TOKEN;
-    const filePath = req.query.path || "data.json"; // nombre del archivo a leer
+    const filePath = req.query.path || "frontend/empresa_datos.json";
     const branch = "main";
 
     const response = await fetch(
