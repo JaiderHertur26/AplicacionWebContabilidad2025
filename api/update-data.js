@@ -1,45 +1,50 @@
+import { Octokit } from "octokit";
+
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Solo se permite POST' });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Solo se permite POST" });
   }
 
-  const { GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO } = process.env;
-  const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/data.json`;
+  const { path, data } = req.body;
+  if (!path || !data) {
+    return res.status(400).json({ error: "Faltan parámetros 'path' o 'data'" });
+  }
+
+  const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+
+  const owner = process.env.GITHUB_OWNER;
+  const repo = process.env.GITHUB_REPO;
 
   try {
-    const getRes = await fetch(url, {
-      headers: {
-        Authorization: `token ${GITHUB_TOKEN}`,
-        Accept: 'application/vnd.github.v3+json',
-      },
-    });
-
-    const existingFile = await getRes.json();
-    const sha = existingFile.sha;
-
-    const newContent = Buffer.from(JSON.stringify(req.body, null, 2)).toString('base64');
-
-    const updateRes = await fetch(url, {
-      method: 'PUT',
-      headers: {
-        Authorization: `token ${GITHUB_TOKEN}`,
-        Accept: 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        message: 'Actualización automática desde la app web',
-        content: newContent,
-        sha,
-      }),
-    });
-
-    if (!updateRes.ok) {
-      const errText = await updateRes.text();
-      return res.status(400).json({ error: 'Error al actualizar', details: errText });
+    // Obtener el archivo actual (para obtener el sha)
+    let sha;
+    try {
+      const { data: file } = await octokit.rest.repos.getContent({
+        owner,
+        repo,
+        path,
+      });
+      sha = file.sha;
+    } catch {
+      sha = undefined; // si no existe el archivo aún
     }
 
-    res.status(200).json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    // 🔹 Guardar solo el contenido de "data"
+    const content = JSON.stringify(data, null, 2);
+
+    // Subir el archivo
+    await octokit.rest.repos.createOrUpdateFileContents({
+      owner,
+      repo,
+      path,
+      message: "Actualización desde la app web",
+      content: Buffer.from(content).toString("base64"),
+      sha,
+    });
+
+    return res.status(200).json({ success: true, saved: data });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: err.message });
   }
 }
