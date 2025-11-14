@@ -2,7 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from '@/App';
 import '@/index.css';
-import { loadLocalStorageFromGitHub, startAutoSync } from './syncLocalStorage.js'; // <- IMPORTA AQUÍ
+import { loadLocalStorageFromGitHub, startAutoSync } from '@/syncLocalStorage.js'; // usar alias
 
 // Carga inicial y auto-sync
 (async () => {
