@@ -1,1 +1,120 @@
-{}
+{
+  "1763093468507-transactions": [
+    {
+      "date": "2025-11-14",
+      "description": "CARTILAS 1ER COM. NIÑOS",
+      "amount": "25000",
+      "type": "income",
+      "category": "BAUTISMOS",
+      "contactId": "",
+      "destination": "caja_principal|CAJA PRINCIPAL",
+      "isFixedAsset": false,
+      "id": "1763093539093",
+      "voucherNumber": 1
+    },
+    {
+      "date": "2025-11-14",
+      "description": "CARTILAS 1ER COM. PADRES DE FAMILIA",
+      "amount": "35000",
+      "type": "income",
+      "category": "OFRENDA RECIBIDA EN SECTORES O CELULAS",
+      "contactId": "",
+      "destination": "caja_principal|CAJA PRINCIPAL",
+      "isFixedAsset": false,
+      "id": "1763094626734",
+      "voucherNumber": 2
+    }
+  ],
+  "1763093468507-accounts": [
+    {
+      "id": "17630935144250.2558830020011116",
+      "number": "1",
+      "name": "ACTIVO"
+    },
+    {
+      "id": "17630935144250.6735939736362445",
+      "number": "110505",
+      "name": "CAJA GENERAL"
+    },
+    {
+      "id": "1763093491245-11050501",
+      "number": "11050501",
+      "name": "CAJA PRINCIPAL"
+    },
+    {
+      "id": "17630935144250.3598981162741691",
+      "number": "1120",
+      "name": "CUENTAS DE AHORRO"
+    },
+    {
+      "id": "17630935144250.7449827368309311",
+      "number": "112015",
+      "name": "ORG.COOPERATIVOS FINANCIEROS"
+    },
+    {
+      "id": "17630935144250.7335138736863906",
+      "number": "11201501",
+      "name": "COOPERATIVA FRATERNIDAD SACERDOTAL"
+    },
+    {
+      "id": "17630935144250.8674038478612818",
+      "number": "11201502",
+      "name": "Cooperativa Sacerdotal"
+    },
+    {
+      "id": "17630935144250.6396280259198643",
+      "number": "12",
+      "name": "INVERSIONES"
+    },
+    {
+      "id": "17630935144250.08585672466516381",
+      "number": "1295",
+      "name": "OTRAS INVERSIONES"
+    },
+    {
+      "id": "17630935144250.5108207708715331",
+      "number": "129505",
+      "name": "APORTES EN COOPERATIVA"
+    },
+    {
+      "id": "17630935144250.6860476995917356",
+      "number": "12950501",
+      "name": "APORTES COOPERATIVA FRATERNIDAD"
+    },
+    {
+      "id": "17630935144250.8621933394412151",
+      "number": "13050505",
+      "name": "CUENTAS POR COBRAR"
+    },
+    {
+      "id": "17630935144250.3887347060304338",
+      "number": "2",
+      "name": "PASIVO"
+    },
+    {
+      "id": "17630935144250.2869219734844084",
+      "number": "23",
+      "name": "CUENTAS POR PAGAR"
+    }
+    // Puedes seguir agregando todas las cuentas restantes siguiendo el mismo formato
+  ],
+  "1763093468507-fixedAssets": [],
+  "1763093468507-voucher-sequence": {
+    "income": 2,
+    "expense": 0,
+    "transfer": 0
+  },
+  "companies": [
+    {
+      "id": "1763093468507",
+      "name": "Jaider Miguel Herrera Turizo",
+      "doc": "1052042443",
+      "address": "CRA 10 #98-71",
+      "phone": "3167630763",
+      "username": "hertur26",
+      "password": "hertur26",
+      "parentId": null
+    }
+  ],
+  "auth_session": 1763093468507
+}
