@@ -1,0 +1,17 @@
+## Pages
+- [Activos Fijos - JaiderHerTur26](/fixedassets): No description available
+- [Ajustes - JaiderHerTur26](/settings): Configura los ajustes de tu empresa.
+- [Cierres de Libros - JaiderHerTur26](/bookclosings): No description available
+- [Contactos - JaiderHerTur26](/contacts): Gestiona tus clientes y proveedores
+- [Cuentas Bancarias - JaiderHerTur26](/bankaccounts): No description available
+- [Cuentas por Cobrar - JaiderHerTur26](/accountsreceivable): No description available
+- [Cuentas por Pagar - JaiderHerTur26](/accountspayable): No description available
+- [Dashboard - JaiderHerTur26](/dashboard): Panel de control con resumen financiero y estadísticas de tu negocio
+- [Facturas - ContaPro](/invoices): Crea y gestiona facturas profesionales para tus clientes
+- [Gestionar Empresas - JaiderHerTur26](/companies): No description available
+- [Iniciar Sesión - JaiderHerTur26](/login): No description available
+- [Plan de Cuentas - JaiderHerTur26](/accounts): Gestiona tu plan de cuentas contables
+- [Propiedades y Oficinas - JaiderHerTur26](/realestates): No description available
+- [Reportes - JaiderHerTur26](/reports): No description available
+- [Reportes Tributarios - JaiderHerTur26](/taxreports): Genera reportes tributarios como el de información exógena.
+- [Transacciones - JaiderHerTur26](/transactions): Gestiona todas tus transacciones de ingresos y gastos
