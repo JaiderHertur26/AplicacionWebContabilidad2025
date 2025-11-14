@@ -47,7 +47,21 @@
       "parentId": null
     }
   ],
-  "1763093468507-fixedAssets": [],
+  "1763093468507-fixedAssets": [
+    {
+      "quantity": 1,
+      "name": "tv",
+      "model": "s",
+      "category": "movi",
+      "usage": "Uso",
+      "status": "Bueno",
+      "location": "casa",
+      "value": "50000",
+      "notes": "",
+      "id": "1763120059043",
+      "year": "2025"
+    }
+  ],
   "1763093468507-accounts": [
     {
       "id": "17630935144250.2558830020011116",
