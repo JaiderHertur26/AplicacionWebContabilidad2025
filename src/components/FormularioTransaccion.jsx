@@ -1,9 +1,27 @@
-import { syncLocalStorage } from "../lib/syncLocalStorage";
+import React, { useState } from 'react';
+import { getAccounts, saveAccounts } from '../utils/storage';
 
-const handleSave = (nuevoDato) => {
-  // Guardar en localStorage
-  localStorage.setItem("datoImportante", JSON.stringify(nuevoDato));
+export default function FormularioTransaccion() {
+  const [transaction, setTransaction] = useState({});
 
-  // Sincronizar con GitHub
-  syncLocalStorage();
-};
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const accounts = getAccounts(); // cuentas de la empresa activa
+    accounts.push(transaction);     // agregamos movimiento
+    saveAccounts(accounts);         // guardamos en la empresa correcta
+    setTransaction({});             // limpiar formulario
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      {/* campos del formulario */}
+      <input
+        type="text"
+        placeholder="Nombre transacción"
+        value={transaction.name || ''}
+        onChange={(e) => setTransaction({...transaction, name: e.target.value})}
+      />
+      <button type="submit">Agregar</button>
+    </form>
+  );
+}
