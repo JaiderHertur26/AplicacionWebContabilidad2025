@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
@@ -21,15 +20,18 @@ import AccountsPayable from '@/pages/AccountsPayable';
 import { Toaster } from '@/components/ui/toaster';
 import { useCompanyData } from '@/hooks/useCompanyData';
 
+// Import de sincronización
+import { loadLocalStorageFromGitHub } from "./lib/loadLocalStorageFromGitHub";
+import { syncLocalStorage } from "./lib/syncLocalStorage";
+
 const CompanyContext = createContext();
 export const useCompany = () => useContext(CompanyContext);
 
 const InitialAccountsSetup = ({ children }) => {
   const { activeCompany } = useCompany();
-  const [accounts, saveAccounts, isAccountsLoaded] = useCompanyData('accounts'); // Use isLoaded state
+  const [accounts, saveAccounts, isAccountsLoaded] = useCompanyData('accounts');
 
   useEffect(() => {
-    // Act only when data is loaded and there's an active company
     if (activeCompany && isAccountsLoaded) {
       const requiredAccounts = [
         { number: '110505', name: 'CAJA GENERAL' },
@@ -39,19 +41,17 @@ const InitialAccountsSetup = ({ children }) => {
         { number: '23', name: 'CUENTAS POR PAGAR' }
       ];
 
-      // Only add accounts if the accounts array is completely empty
       if (accounts.length === 0) {
-          const newAccounts = requiredAccounts.map(reqAcc => ({
-            id: `${Date.now()}-${reqAcc.number}`,
-            number: reqAcc.number,
-            name: reqAcc.name,
-          }));
-          saveAccounts(newAccounts.sort((a, b) => a.number.localeCompare(b.number)));
+        const newAccounts = requiredAccounts.map(reqAcc => ({
+          id: `${Date.now()}-${reqAcc.number}`,
+          number: reqAcc.number,
+          name: reqAcc.name,
+        }));
+        saveAccounts(newAccounts.sort((a, b) => a.number.localeCompare(b.number)));
       }
     }
   }, [activeCompany, accounts, saveAccounts, isAccountsLoaded]);
 
-  // Render children immediately if accounts are loaded or if no company is active
   return isAccountsLoaded || !activeCompany ? children : null;
 };
 
@@ -62,6 +62,12 @@ function App() {
   const [companies, setCompanies] = useState([]);
   const [isGeneralAdmin, setIsGeneralAdmin] = useState(false);
 
+  // 1️⃣ Cargar localStorage desde GitHub al iniciar
+  useEffect(() => {
+    loadLocalStorageFromGitHub();
+  }, []);
+
+  // 2️⃣ Inicializar sesión desde localStorage
   useEffect(() => {
     const session = localStorage.getItem('auth_session');
     if (session) {
@@ -85,16 +91,27 @@ function App() {
     }
   }, []);
 
+  // 3️⃣ Sincronización automática: cada vez que cambie auth_session, companies o activeCompany
+  useEffect(() => {
+    if (isAuthenticated) {
+      localStorage.setItem('auth_session', isGeneralAdmin ? 'general_admin' : activeCompany?.id || '');
+      localStorage.setItem('companies', JSON.stringify(companies));
+      if (!isGeneralAdmin && activeCompany) {
+        localStorage.setItem('activeCompany', JSON.stringify(activeCompany));
+      }
+      // Sincronizar automáticamente con GitHub
+      syncLocalStorage();
+    }
+  }, [isAuthenticated, isGeneralAdmin, companies, activeCompany]);
+
   const handleLogin = (loginData) => {
     setIsAuthenticated(true);
     if (loginData.isGeneralAdmin) {
-        setIsGeneralAdmin(true);
-        setActiveCompany(null);
-        localStorage.setItem('auth_session', 'general_admin');
+      setIsGeneralAdmin(true);
+      setActiveCompany(null);
     } else {
-        setIsGeneralAdmin(false);
-        setActiveCompany(loginData.company);
-        localStorage.setItem('auth_session', loginData.company.id);
+      setIsGeneralAdmin(false);
+      setActiveCompany(loginData.company);
     }
     const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
     setCompanies(storedCompanies);
@@ -105,6 +122,8 @@ function App() {
     setIsGeneralAdmin(false);
     localStorage.removeItem('auth_session');
     setActiveCompany(null);
+    // Sincronizar cambios
+    syncLocalStorage();
   };
 
   const selectCompany = (company) => {
@@ -120,6 +139,7 @@ function App() {
     companies,
     setCompanies,
     isGeneralAdmin,
+    setActiveCompany
   };
 
   const MainApp = () => (
