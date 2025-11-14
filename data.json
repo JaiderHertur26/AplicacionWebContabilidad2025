@@ -35,6 +35,16 @@
       "password": "hertur26",
       "id": "1763093468507",
       "parentId": null
+    },
+    {
+      "name": "Parroquia María Auxilio de los Cristianos",
+      "doc": "802020263",
+      "address": "CRA 10 #98-71",
+      "phone": "3167630763",
+      "username": "ma_2025",
+      "password": "hertur26",
+      "id": "1763120003248",
+      "parentId": null
     }
   ],
   "1763093468507-fixedAssets": [],
@@ -605,5 +615,14 @@
     "expense": 0,
     "transfer": 0
   },
-  "auth_session": 1763093468507
+  "auth_session": 1763093468507,
+  "1763093468507-bankAccounts": [
+    {
+      "bankName": "Cooperativa Sacerdotal",
+      "accountNumber": "25252525",
+      "initialBalance": 25000,
+      "initialInvestmentBalance": 25000,
+      "id": "1763120039639"
+    }
+  ]
 }
