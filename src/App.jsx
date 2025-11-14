@@ -19,54 +19,51 @@ import TaxReports from '@/pages/TaxReports';
 import AccountsReceivable from '@/pages/AccountsReceivable';
 import AccountsPayable from '@/pages/AccountsPayable';
 import { Toaster } from '@/components/ui/toaster';
+import { useCompanyData } from '@/hooks/useCompanyData';
 import { loadLocalStorageFromGitHub } from './lib/loadLocalStorageFromGitHub';
 import { syncLocalStorage } from './lib/syncLocalStorage';
-import SelectorEmpresa from './components/SelectorEmpresa';
 import FormularioTransaccion from './components/FormularioTransaccion';
 import ListaTransacciones from './components/ListaTransacciones';
-import { getAccounts, saveAccounts, getActiveCompany } from './utils/storage';
+import { getActiveCompany } from './utils/storage';
 
 const CompanyContext = createContext();
 export const useCompany = () => useContext(CompanyContext);
 
+// Inicialización de cuentas obligatorias
 const InitialAccountsSetup = ({ children }) => {
   const { activeCompany } = useCompany();
-  const [accounts, setAccounts] = useState([]);
+  const [accounts, saveAccounts, isAccountsLoaded] = useCompanyData('accounts');
 
   useEffect(() => {
-    if (activeCompany) {
-      const savedAccounts = getAccounts();
-      if (savedAccounts.length === 0) {
-        const requiredAccounts = [
-          { number: '110505', name: 'CAJA GENERAL' },
-          { number: '11050501', name: 'CAJA PRINCIPAL' },
-          { number: '1120', name: 'CUENTAS DE AHORRO' },
-          { number: '13050505', name: 'CUENTAS POR COBRAR' },
-          { number: '23', name: 'CUENTAS POR PAGAR' }
-        ];
-        const newAccounts = requiredAccounts.map(acc => ({
-          id: `${Date.now()}-${acc.number}`,
-          number: acc.number,
-          name: acc.name,
+    if (activeCompany && isAccountsLoaded) {
+      const requiredAccounts = [
+        { number: '110505', name: 'CAJA GENERAL' },
+        { number: '11050501', name: 'CAJA PRINCIPAL' },
+        { number: '1120', name: 'CUENTAS DE AHORRO' },
+        { number: '13050505', name: 'CUENTAS POR COBRAR' },
+        { number: '23', name: 'CUENTAS POR PAGAR' }
+      ];
+
+      if (accounts.length === 0) {
+        const newAccounts = requiredAccounts.map(reqAcc => ({
+          id: `${Date.now()}-${reqAcc.number}`,
+          number: reqAcc.number,
+          name: reqAcc.name,
         }));
-        saveAccounts(newAccounts);
-        setAccounts(newAccounts);
-      } else {
-        setAccounts(savedAccounts);
+        saveAccounts(newAccounts.sort((a, b) => a.number.localeCompare(b.number)));
       }
     }
-  }, [activeCompany]);
+  }, [activeCompany, accounts, saveAccounts, isAccountsLoaded]);
 
-  return children;
+  return isAccountsLoaded || !activeCompany ? children : null;
 };
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [activeCompany, setActiveCompany] = useState(null);
-  const [companies, setCompanies] = useState([]);
+  const [activeCompany, setActiveCompany] = useState(getActiveCompany());
+  const [companies, setCompanies] = useState(JSON.parse(localStorage.getItem('companies') || '[]'));
   const [isGeneralAdmin, setIsGeneralAdmin] = useState(false);
   const [isStorageLoaded, setIsStorageLoaded] = useState(false);
-  const [transactions, setTransactions] = useState([]);
 
   // 🔹 Cargar localStorage desde GitHub al inicio
   useEffect(() => {
@@ -80,28 +77,24 @@ function App() {
   // 🔹 Leer sesión después de cargar localStorage
   useEffect(() => {
     if (!isStorageLoaded) return;
-    const session = localStorage.getItem('auth_session');
-    const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
-    setCompanies(storedCompanies);
 
+    const session = localStorage.getItem('auth_session');
     if (session) {
       if (session === 'general_admin') {
         setIsAuthenticated(true);
         setIsGeneralAdmin(true);
       } else {
-        const loggedCompany = storedCompanies.find(c => c.id === session);
-        if (loggedCompany) {
-          setActiveCompany(loggedCompany);
+        const loggedInCompany = companies.find(c => c.id === session);
+        if (loggedInCompany) {
+          setActiveCompany(loggedInCompany);
           setIsAuthenticated(true);
-          setIsGeneralAdmin(false);
         } else {
           localStorage.removeItem('auth_session');
         }
       }
     }
-  }, [isStorageLoaded]);
+  }, [isStorageLoaded, companies]);
 
-  // 🔹 Login
   const handleLogin = (loginData) => {
     setIsAuthenticated(true);
     if (loginData.isGeneralAdmin) {
@@ -113,8 +106,6 @@ function App() {
       setActiveCompany(loginData.company);
       localStorage.setItem('auth_session', loginData.company.id);
     }
-    const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
-    setCompanies(storedCompanies);
     syncLocalStorage();
   };
 
@@ -123,19 +114,10 @@ function App() {
     setIsGeneralAdmin(false);
     setActiveCompany(null);
     localStorage.removeItem('auth_session');
-    setTransactions([]);
-  };
-
-  const selectCompany = (company) => {
-    if (isGeneralAdmin) return;
-    setActiveCompany(company);
-    setTransactions([]); // Reinicia transacciones al cambiar de empresa
-    localStorage.setItem('auth_session', company.id);
   };
 
   const companyContextValue = {
     activeCompany,
-    selectCompany,
     companies,
     setCompanies,
     isGeneralAdmin
@@ -144,22 +126,17 @@ function App() {
   const MainApp = () => (
     <Layout onLogout={handleLogout}>
       <InitialAccountsSetup>
-        <div className="max-w-xl mx-auto mt-10">
-          <SelectorEmpresa companies={companies} />
-          <h2>Empresa activa: {activeCompany?.name || 'Ninguna'}</h2>
-          <FormularioTransaccion
-            onAddTransaction={(t) =>
-              setTransactions(prev => [...prev, { ...t, companyId: activeCompany.id }])
-            }
-          />
-          <ListaTransacciones transactions={transactions} />
+        <div className="max-w-xl mx-auto mt-6">
+          <h2 className="mb-4 text-lg font-semibold">
+            Empresa activa: {activeCompany?.name || 'Ninguna'}
+          </h2>
+          <FormularioTransaccion />
+          <ListaTransacciones />
         </div>
-
         <Routes>
           <Route path="/" element={isGeneralAdmin ? <Navigate to="/companies" /> : <Dashboard />} />
           <Route path="/companies" element={<Companies />} />
           <Route path="/settings" element={<Settings />} />
-
           <Route path="/transactions" element={!isGeneralAdmin ? <Transactions /> : <Navigate to="/companies" />} />
           <Route path="/bank-accounts" element={!isGeneralAdmin ? <BankAccounts /> : <Navigate to="/companies" />} />
           <Route path="/fixed-assets" element={!isGeneralAdmin ? <FixedAssets /> : <Navigate to="/companies" />} />
