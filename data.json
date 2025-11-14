@@ -647,5 +647,17 @@
       "date": "2025-11-14",
       "id": "1763120072754"
     }
+  ],
+  "1763093468507-contacts": [
+    {
+      "type": "person",
+      "name": "Jaider Miguel Herrera Turizo",
+      "email": "jaiderhertur26@gmail.com",
+      "phone": "3167630763",
+      "address": "CRA 10 #98-71",
+      "docType": "CC",
+      "docNumber": "890102249-4",
+      "id": "1763120081815"
+    }
   ]
 }
