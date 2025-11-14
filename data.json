@@ -25,9 +25,6 @@
       "voucherNumber": 2
     }
   ],
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
   "companies": [
     {
       "name": "Jaider Miguel Herrera Turizo",
@@ -41,9 +38,6 @@
     }
   ],
   "1763093468507-fixedAssets": [],
-=======
->>>>>>> 27d6d846 (Actualización)
->>>>>>> 7cfdafd8 (Actualización)
   "1763093468507-accounts": [
     {
       "id": "17630935144250.2558830020011116",
@@ -61,17 +55,11 @@
       "name": "CAJA PRINCIPAL"
     },
     {
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
       "id": "17630935144250.7811247306064463",
       "number": "11050501",
       "name": "CAJA PRINCIPAL"
     },
     {
-=======
->>>>>>> 27d6d846 (Actualización)
->>>>>>> 7cfdafd8 (Actualización)
       "id": "17630935144250.3598981162741691",
       "number": "1120",
       "name": "CUENTAS DE AHORRO"
@@ -125,9 +113,6 @@
       "id": "17630935144250.2869219734844084",
       "number": "23",
       "name": "CUENTAS POR PAGAR"
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
     },
     {
       "id": "17630935144250.3228512370585316",
@@ -613,59 +598,12 @@
       "id": "17630935144250.2227499771589715",
       "number": "529510",
       "name": "LIBROS, SUSCRIPCIONES"
->>>>>>> 7cfdafd8 (Actualización)
     }
-    // Puedes seguir agregando todas las cuentas restantes siguiendo el mismo formato
   ],
-<<<<<<< HEAD
-  "1763093468507-fixedAssets": [],
-=======
-=======
-    }
-    // Puedes seguir agregando todas las cuentas restantes siguiendo el mismo formato
-  ],
-  "1763093468507-fixedAssets": [],
->>>>>>> 27d6d846 (Actualización)
->>>>>>> 7cfdafd8 (Actualización)
   "1763093468507-voucher-sequence": {
-    "income": 2,
+    "income": 3,
     "expense": 0,
     "transfer": 0
   },
-<<<<<<< HEAD
-  "companies": [
-    {
-      "id": "1763093468507",
-      "name": "Jaider Miguel Herrera Turizo",
-      "doc": "1052042443",
-      "address": "CRA 10 #98-71",
-      "phone": "3167630763",
-      "username": "hertur26",
-      "password": "hertur26",
-      "parentId": null
-    }
-  ],
   "auth_session": 1763093468507
 }
-=======
-<<<<<<< HEAD
-  "auth_session": 1763093468507
-}
-=======
-  "companies": [
-    {
-      "id": "1763093468507",
-      "name": "Jaider Miguel Herrera Turizo",
-      "doc": "1052042443",
-      "address": "CRA 10 #98-71",
-      "phone": "3167630763",
-      "username": "hertur26",
-      "password": "hertur26",
-      "parentId": null
-    }
-  ],
-  "auth_session": 1763093468507
-}
->>>>>>> 27d6d846 (Actualización)
->>>>>>> 7cfdafd8 (Actualización)
-
