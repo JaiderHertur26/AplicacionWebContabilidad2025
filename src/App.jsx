@@ -58,9 +58,8 @@ const InitialAccountsSetup = ({ children }) => {
 // =======================================
 // === SINCRONIZACIÓN REMOTA GITHUB =====
 // =======================================
-const GITHUB_RAW_URL = const GITHUB_RAW_URL =
+const GITHUB_RAW_URL =
   "https://raw.githubusercontent.com/JaiderHertur26/AplicacionWebContabilidad/main/compania.json";
-
 
 async function loadRemoteData() {
   try {
@@ -85,13 +84,11 @@ function App() {
   const [companies, setCompanies] = useState([]);
   const [isGeneralAdmin, setIsGeneralAdmin] = useState(false);
 
-  // =======================================
-  // PASO 3 → CARGA REMOTA DESDE GITHUB
-  // =======================================
+  // === CARGAR DATA DESDE GITHUB ===
   useEffect(() => {
     loadRemoteData();
   }, []);
-  // =======================================
+  // ================================
 
   useEffect(() => {
     const session = localStorage.getItem('auth_session');
