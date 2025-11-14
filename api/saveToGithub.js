@@ -1,4 +1,4 @@
-// pages/api/saveToGithub.js
+// api/saveToGithub.js
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -10,14 +10,15 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "content and message are required" });
   }
 
-  const token = process.env.GITHUB_TOKEN;
+  const token = process.env.GITHUB_TOKEN; // tu token con permisos de repo
+
   const owner = "JaiderHertur26";
   const repo = "AplicacionWebContabilidad";
   const path = "data.json";
   const branch = "main";
 
   try {
-    // 1️⃣ Obtener SHA actual del archivo
+    // 1️⃣ Obtener SHA del archivo existente
     const getRes = await fetch(
       `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`,
       {
@@ -35,7 +36,18 @@ export default async function handler(req, res) {
     const fileData = await getRes.json();
     const sha = fileData.sha;
 
-    // 2️⃣ Actualizar archivo con el contenido completo
+    // 2️⃣ Leer y decodificar data.json existente
+    let current = {};
+    try {
+      current = JSON.parse(Buffer.from(fileData.content, "base64").toString("utf8"));
+    } catch (e) {
+      console.error("Error parsing existing file", e);
+    }
+
+    // 3️⃣ Mezclar contenido nuevo con existente
+    const newJson = { ...current, ...content };
+
+    // 4️⃣ Subir archivo actualizado a GitHub
     const updateRes = await fetch(
       `https://api.github.com/repos/${owner}/${repo}/contents/${path}`,
       {
@@ -47,7 +59,7 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify({
           message,
-          content: Buffer.from(JSON.stringify(content, null, 2)).toString("base64"),
+          content: Buffer.from(JSON.stringify(newJson, null, 2)).toString("base64"),
           sha,
           branch,
         }),
@@ -62,7 +74,7 @@ export default async function handler(req, res) {
     const result = await updateRes.json();
     return res.status(200).json({ ok: true, result });
   } catch (err) {
-    console.error("❌ Error uploading to GitHub:", err);
-    return res.status(500).json({ error: "Internal server error" });
+    console.error("Error en saveToGithub:", err);
+    return res.status(500).json({ error: err.message });
   }
 }

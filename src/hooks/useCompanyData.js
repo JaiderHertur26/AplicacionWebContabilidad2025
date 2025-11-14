@@ -80,49 +80,61 @@ export function useCompanyData(storageKey) {
   }, [companyStorageKey, activeCompany]);
 
   // ============================================================
-  // 🔹 3. GUARDAR DATA Y SINCRONIZAR TODO EL LOCALSTORAGE A GITHUB
-  // ============================================================
-  const saveData = useCallback(
-    (newData, options = {}) => {
-      if (!companyStorageKey) return;
+// 🔹 3. GUARDAR DATA Y SINCRONIZAR TODO EL LOCALSTORAGE A GITHUB
+// ============================================================
+const saveData = useCallback(
+  async (newData, options = {}) => {
+    if (!companyStorageKey) return;
 
-      // 1. Guardar normalmente en localStorage
-      localStorage.setItem(companyStorageKey, JSON.stringify(newData));
+    // 1. Guardar normalmente en localStorage
+    localStorage.setItem(companyStorageKey, JSON.stringify(newData));
 
-      if (isMounted.current && !options.silent) {
-        setData(newData);
+    if (isMounted.current && !options.silent) {
+      setData(newData);
+    }
+
+    // Notificar cambios internos
+    window.dispatchEvent(
+      new CustomEvent("storage-updated", {
+        detail: { key: companyStorageKey },
+      })
+    );
+
+    // 2. COPIA COMPLETA DEL LOCALSTORAGE
+    const full = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      try {
+        full[key] = JSON.parse(localStorage.getItem(key));
+      } catch {
+        full[key] = localStorage.getItem(key);
       }
+    }
 
-      // Notificar cambios internos
-      window.dispatchEvent(
-        new CustomEvent("storage-updated", {
-          detail: { key: companyStorageKey },
-        })
-      );
-
-      // 2. COPIA COMPLETA DEL LOCALSTORAGE
-      const full = {};
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        try {
-          full[key] = JSON.parse(localStorage.getItem(key));
-        } catch {
-          full[key] = localStorage.getItem(key);
-        }
-      }
-
-      // 3. ENVIAR TOTAL A GITHUB
-      fetch("/api/saveToGithub", {
+    // 3. ENVIAR TOTAL A GITHUB
+    try {
+      const res = await fetch("/api/saveToGithub", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: `Sync localStorage → GitHub (${companyStorageKey})`,
-          content: full
+          content: full,
         }),
       });
-    },
-    [companyStorageKey]
-  );
+
+      if (!res.ok) {
+        const err = await res.json();
+        console.error("❌ Error subiendo a GitHub:", err);
+      } else {
+        console.log("✅ LocalStorage sincronizado a GitHub correctamente");
+      }
+    } catch (error) {
+      console.error("❌ Falló la petición a GitHub:", error);
+    }
+  },
+  [companyStorageKey]
+);
+
 
   // ============================================================
   // 🔹 4. ESCUCHAR CAMBIOS DE OTRAS PARTES DE LA APP
