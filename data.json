@@ -25,13 +25,13 @@
       "voucherNumber": 2
     },
     {
-      "id": "txn-inc-1763120101131",
-      "type": "income",
+      "id": "txn-exp-1763120112296",
+      "type": "expense",
       "date": "2025-11-14",
-      "description": "Ingreso por venta a crédito: gfgfg",
+      "description": "Gasto por compra a crédito: dfdfd",
       "amount": "14000",
-      "category": "CONFIRMACIONES",
-      "destination": "accounts_receivable",
+      "category": "CIRIOS Y VELONES",
+      "destination": "accounts_payable",
       "isReceivablePayable": true
     }
   ],
@@ -668,6 +668,18 @@
       "docType": "CC",
       "docNumber": "890102249-4",
       "id": "1763120081815"
+    }
+  ],
+  "1763093468507-accountsReceivable": [
+    {
+      "customer": "gffg",
+      "description": "gfgfg",
+      "issueDate": "2025-11-14",
+      "dueDate": "2025-11-15",
+      "amount": "14000",
+      "linkedAccount": "CONFIRMACIONES",
+      "id": "1763120101131",
+      "status": "Pendiente"
     }
   ]
 }
