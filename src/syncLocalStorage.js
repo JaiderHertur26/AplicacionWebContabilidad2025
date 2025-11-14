@@ -1,4 +1,4 @@
-// Función para subir JSON vía serverless
+// Función para enviar datos al backend serverless
 const pushJson = async (endpoint, jsonData) => {
   const res = await fetch(`/api/${endpoint}`, {
     method: "POST",
