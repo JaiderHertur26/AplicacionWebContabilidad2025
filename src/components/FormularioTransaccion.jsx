@@ -1,27 +1,50 @@
+// src/components/FormularioTransaccion.jsx
 import React, { useState } from 'react';
-import { getAccounts, saveAccounts } from '../utils/storage';
+import { useCompany } from '../App';
 
 export default function FormularioTransaccion() {
-  const [transaction, setTransaction] = useState({});
+  const { activeCompany, addTransaction } = useCompany();
+  const [desc, setDesc] = useState('');
+  const [amount, setAmount] = useState('');
+
+  if (!activeCompany) return <p>Seleccione una empresa para agregar transacciones.</p>;
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const accounts = getAccounts(); // cuentas de la empresa activa
-    accounts.push(transaction);     // agregamos movimiento
-    saveAccounts(accounts);         // guardamos en la empresa correcta
-    setTransaction({});             // limpiar formulario
+    if (!desc || !amount) return;
+
+    const newTransaction = {
+      id: `${Date.now()}`,
+      description: desc,
+      amount: parseFloat(amount),
+      date: new Date().toISOString()
+    };
+
+    addTransaction(newTransaction);
+
+    setDesc('');
+    setAmount('');
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      {/* campos del formulario */}
+    <form onSubmit={handleSubmit} className="mb-6 flex gap-2">
       <input
         type="text"
-        placeholder="Nombre transacción"
-        value={transaction.name || ''}
-        onChange={(e) => setTransaction({...transaction, name: e.target.value})}
+        placeholder="Descripción"
+        value={desc}
+        onChange={e => setDesc(e.target.value)}
+        className="border p-2 rounded flex-1"
       />
-      <button type="submit">Agregar</button>
+      <input
+        type="number"
+        placeholder="Monto"
+        value={amount}
+        onChange={e => setAmount(e.target.value)}
+        className="border p-2 rounded w-24"
+      />
+      <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">
+        Agregar
+      </button>
     </form>
   );
 }

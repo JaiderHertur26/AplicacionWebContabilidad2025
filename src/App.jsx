@@ -22,10 +22,16 @@ import { Toaster } from '@/components/ui/toaster';
 import { useCompanyData } from '@/hooks/useCompanyData';
 import { loadLocalStorageFromGitHub } from './lib/loadLocalStorageFromGitHub';
 import { syncLocalStorage } from './lib/syncLocalStorage';
+import SelectorEmpresa from './components/SelectorEmpresa';
+import FormularioTransaccion from './components/FormularioTransaccion';
+import ListaTransacciones from './components/ListaTransacciones';
+import { getActiveCompany } from './utils/storage';
+import { getTransactions, saveTransactions } from './utils/storage';
 
 const CompanyContext = createContext();
 export const useCompany = () => useContext(CompanyContext);
 
+// Inicialización de cuentas obligatorias
 const InitialAccountsSetup = ({ children }) => {
   const { activeCompany } = useCompany();
   const [accounts, saveAccounts, isAccountsLoaded] = useCompanyData('accounts');
@@ -56,10 +62,11 @@ const InitialAccountsSetup = ({ children }) => {
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [activeCompany, setActiveCompany] = useState(null);
-  const [companies, setCompanies] = useState([]);
+  const [activeCompany, setActiveCompany] = useState(getActiveCompany());
+  const [companies, setCompanies] = useState(JSON.parse(localStorage.getItem('companies') || '[]'));
   const [isGeneralAdmin, setIsGeneralAdmin] = useState(false);
   const [isStorageLoaded, setIsStorageLoaded] = useState(false);
+  const [transactions, setTransactions] = useState(getTransactions());
 
   // 🔹 Cargar localStorage desde GitHub al inicio
   useEffect(() => {
@@ -79,23 +86,20 @@ function App() {
       if (session === 'general_admin') {
         setIsAuthenticated(true);
         setIsGeneralAdmin(true);
-        const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
-        setCompanies(storedCompanies);
       } else {
-        const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
-        const loggedInCompany = storedCompanies.find(c => c.id === session);
+        const loggedInCompany = companies.find(c => c.id === session);
         if (loggedInCompany) {
-          setCompanies(storedCompanies);
           setActiveCompany(loggedInCompany);
+          setTransactions(getTransactions());
           setIsAuthenticated(true);
-          setIsGeneralAdmin(false);
         } else {
           localStorage.removeItem('auth_session');
         }
       }
     }
-  }, [isStorageLoaded]);
+  }, [isStorageLoaded, companies]);
 
+  // 🔹 Manejo de login
   const handleLogin = (loginData) => {
     setIsAuthenticated(true);
     if (loginData.isGeneralAdmin) {
@@ -106,24 +110,37 @@ function App() {
       setIsGeneralAdmin(false);
       setActiveCompany(loginData.company);
       localStorage.setItem('auth_session', loginData.company.id);
+      setTransactions(getTransactions());
     }
-    const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
-    setCompanies(storedCompanies);
-    syncLocalStorage(); // Guardar cambios en GitHub
+    syncLocalStorage();
   };
 
+  // 🔹 Manejo de logout
   const handleLogout = () => {
     setIsAuthenticated(false);
     setIsGeneralAdmin(false);
     setActiveCompany(null);
+    setTransactions([]);
     localStorage.removeItem('auth_session');
   };
 
+  // 🔹 Selección de empresa
   const selectCompany = (company) => {
     if (isGeneralAdmin) return;
     if (company.id !== activeCompany?.id) {
-      handleLogout();
+      setActiveCompany(company);
+      localStorage.setItem('auth_session', company.id);
+      setTransactions(getTransactions());
+      syncLocalStorage();
     }
+  };
+
+  // 🔹 Guardar transacciones y sincronizar
+  const addTransaction = (transaction) => {
+    const newTransactions = [...transactions, transaction];
+    setTransactions(newTransactions);
+    saveTransactions(newTransactions);
+    syncLocalStorage();
   };
 
   const companyContextValue = {
@@ -131,17 +148,26 @@ function App() {
     selectCompany,
     companies,
     setCompanies,
-    isGeneralAdmin
+    isGeneralAdmin,
+    transactions,
+    addTransaction
   };
 
   const MainApp = () => (
     <Layout onLogout={handleLogout}>
       <InitialAccountsSetup>
+        <div className="max-w-xl mx-auto mt-6">
+          <SelectorEmpresa companies={companies} />
+          <h2 className="mb-4 text-lg font-semibold">
+            Empresa activa: {activeCompany?.name || 'Ninguna'}
+          </h2>
+          <FormularioTransaccion />
+          <ListaTransacciones />
+        </div>
         <Routes>
           <Route path="/" element={isGeneralAdmin ? <Navigate to="/companies" /> : <Dashboard />} />
           <Route path="/companies" element={<Companies />} />
           <Route path="/settings" element={<Settings />} />
-
           <Route path="/transactions" element={!isGeneralAdmin ? <Transactions /> : <Navigate to="/companies" />} />
           <Route path="/bank-accounts" element={!isGeneralAdmin ? <BankAccounts /> : <Navigate to="/companies" />} />
           <Route path="/fixed-assets" element={!isGeneralAdmin ? <FixedAssets /> : <Navigate to="/companies" />} />
@@ -153,7 +179,6 @@ function App() {
           <Route path="/book-closings" element={!isGeneralAdmin ? <BookClosings /> : <Navigate to="/companies" />} />
           <Route path="/accounts-receivable" element={!isGeneralAdmin ? <AccountsReceivable /> : <Navigate to="/companies" />} />
           <Route path="/accounts-payable" element={!isGeneralAdmin ? <AccountsPayable /> : <Navigate to="/companies" />} />
-          
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </InitialAccountsSetup>

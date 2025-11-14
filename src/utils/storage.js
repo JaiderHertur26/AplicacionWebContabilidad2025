@@ -20,3 +20,17 @@ export const getAccounts = () => {
   const accounts = localStorage.getItem(`${activeCompany.id}-accounts`);
   return accounts ? JSON.parse(accounts) : [];
 };
+
+// 🔹 Transacciones por empresa
+export const saveTransactions = (transactions) => {
+  const activeCompany = getActiveCompany();
+  if (!activeCompany) return;
+  localStorage.setItem(`${activeCompany.id}-transactions`, JSON.stringify(transactions));
+};
+
+export const getTransactions = () => {
+  const activeCompany = getActiveCompany();
+  if (!activeCompany) return [];
+  const transactions = localStorage.getItem(`${activeCompany.id}-transactions`);
+  return transactions ? JSON.parse(transactions) : [];
+};
