@@ -638,5 +638,14 @@
       "initialInvestmentBalance": 25000,
       "id": "1763120039639"
     }
+  ],
+  "1763093468507-realEstates": [
+    {
+      "name": "Lote",
+      "address": "cra",
+      "value": "25000",
+      "date": "2025-11-14",
+      "id": "1763120072754"
+    }
   ]
 }
