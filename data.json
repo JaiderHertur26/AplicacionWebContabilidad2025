@@ -23,16 +23,6 @@
       "isFixedAsset": false,
       "id": "1763094626734",
       "voucherNumber": 2
-    },
-    {
-      "id": "txn-exp-1763120112296",
-      "type": "expense",
-      "date": "2025-11-14",
-      "description": "Gasto por compra a crédito: dfdfd",
-      "amount": "14000",
-      "category": "CIRIOS Y VELONES",
-      "destination": "accounts_payable",
-      "isReceivablePayable": true
     }
   ],
   "companies": [
@@ -680,6 +670,23 @@
       "linkedAccount": "CONFIRMACIONES",
       "id": "1763120101131",
       "status": "Pendiente"
+    }
+  ],
+  "1763093468507-accountsPayable": [
+    {
+      "supplier": "ddfd",
+      "description": "dfdfd",
+      "issueDate": "2025-11-14",
+      "dueDate": "2025-11-15",
+      "amount": "14000",
+      "linkedAccount": "CIRIOS Y VELONES",
+      "id": "1763120112296",
+      "status": "Pendiente"
+    }
+  ],
+  "1763093468507-initialBalance": [
+    {
+      "balance": 25000
     }
   ]
 }
