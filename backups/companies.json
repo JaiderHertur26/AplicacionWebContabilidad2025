@@ -1,3 +1,14 @@
 {
-  "companies": []
+  "companies": [
+    {
+      "name": "Jaider Miguel Herrera Turizo",
+      "doc": "1052042443",
+      "address": "CRA 10 #98-71",
+      "phone": "3167630763",
+      "username": "hertur26",
+      "password": "hertur26",
+      "id": "1763126915358",
+      "parentId": null
+    }
+  ]
 }
