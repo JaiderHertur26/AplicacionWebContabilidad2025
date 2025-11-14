@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
@@ -24,12 +23,14 @@ import { useCompanyData } from '@/hooks/useCompanyData';
 const CompanyContext = createContext();
 export const useCompany = () => useContext(CompanyContext);
 
+// =======================================
+// CONFIGURACIÓN DE CUENTAS INICIALES
+// =======================================
 const InitialAccountsSetup = ({ children }) => {
   const { activeCompany } = useCompany();
-  const [accounts, saveAccounts, isAccountsLoaded] = useCompanyData('accounts'); // Use isLoaded state
+  const [accounts, saveAccounts, isAccountsLoaded] = useCompanyData('accounts');
 
   useEffect(() => {
-    // Act only when data is loaded and there's an active company
     if (activeCompany && isAccountsLoaded) {
       const requiredAccounts = [
         { number: '110505', name: 'CAJA GENERAL' },
@@ -39,24 +40,27 @@ const InitialAccountsSetup = ({ children }) => {
         { number: '23', name: 'CUENTAS POR PAGAR' }
       ];
 
-      // Only add accounts if the accounts array is completely empty
       if (accounts.length === 0) {
-          const newAccounts = requiredAccounts.map(reqAcc => ({
-            id: `${Date.now()}-${reqAcc.number}`,
-            number: reqAcc.number,
-            name: reqAcc.name,
-          }));
-          saveAccounts(newAccounts.sort((a, b) => a.number.localeCompare(b.number)));
+        const newAccounts = requiredAccounts.map(reqAcc => ({
+          id: `${Date.now()}-${reqAcc.number}`,
+          number: reqAcc.number,
+          name: reqAcc.name,
+        }));
+
+        saveAccounts(newAccounts.sort((a, b) => a.number.localeCompare(b.number)));
       }
     }
   }, [activeCompany, accounts, saveAccounts, isAccountsLoaded]);
 
-  // Render children immediately if accounts are loaded or if no company is active
   return isAccountsLoaded || !activeCompany ? children : null;
 };
 
-// === SINCRONIZACIÓN REMOTA GITHUB ===
-const GITHUB_RAW_URL = "https://raw.githubusercontent.com/usuario/repositorio/main/data.json";
+// =======================================
+// === SINCRONIZACIÓN REMOTA GITHUB =====
+// =======================================
+const GITHUB_RAW_URL = const GITHUB_RAW_URL =
+  "https://raw.githubusercontent.com/JaiderHertur26/AplicacionWebContabilidad/main/compania.json";
+
 
 async function loadRemoteData() {
   try {
@@ -72,7 +76,7 @@ async function loadRemoteData() {
     console.error("Error cargando data remota:", e);
   }
 }
-// =====================================
+// =======================================
 
 
 function App() {
@@ -81,11 +85,13 @@ function App() {
   const [companies, setCompanies] = useState([]);
   const [isGeneralAdmin, setIsGeneralAdmin] = useState(false);
 
-// === CARGAR DATA DESDE GITHUB ===
+  // =======================================
+  // PASO 3 → CARGA REMOTA DESDE GITHUB
+  // =======================================
   useEffect(() => {
     loadRemoteData();
   }, []);
-  // ================================
+  // =======================================
 
   useEffect(() => {
     const session = localStorage.getItem('auth_session');
@@ -98,11 +104,11 @@ function App() {
       } else {
         const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
         const loggedInCompany = storedCompanies.find(c => c.id === session);
+
         if (loggedInCompany) {
           setCompanies(storedCompanies);
           setActiveCompany(loggedInCompany);
           setIsAuthenticated(true);
-          setIsGeneralAdmin(false);
         } else {
           localStorage.removeItem('auth_session');
         }
@@ -112,15 +118,17 @@ function App() {
 
   const handleLogin = (loginData) => {
     setIsAuthenticated(true);
+
     if (loginData.isGeneralAdmin) {
-        setIsGeneralAdmin(true);
-        setActiveCompany(null);
-        localStorage.setItem('auth_session', 'general_admin');
+      setIsGeneralAdmin(true);
+      setActiveCompany(null);
+      localStorage.setItem('auth_session', 'general_admin');
     } else {
-        setIsGeneralAdmin(false);
-        setActiveCompany(loginData.company);
-        localStorage.setItem('auth_session', loginData.company.id);
+      setIsGeneralAdmin(false);
+      setActiveCompany(loginData.company);
+      localStorage.setItem('auth_session', loginData.company.id);
     }
+
     const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
     setCompanies(storedCompanies);
   };
@@ -128,17 +136,17 @@ function App() {
   const handleLogout = () => {
     setIsAuthenticated(false);
     setIsGeneralAdmin(false);
-    localStorage.removeItem('auth_session');
     setActiveCompany(null);
+    localStorage.removeItem('auth_session');
   };
 
   const selectCompany = (company) => {
     if (isGeneralAdmin) return;
     if (company.id !== activeCompany?.id) {
-       handleLogout();
+      handleLogout();
     }
   };
-  
+
   const companyContextValue = {
     activeCompany,
     selectCompany,
@@ -166,7 +174,7 @@ function App() {
           <Route path="/book-closings" element={!isGeneralAdmin ? <BookClosings /> : <Navigate to="/companies" />} />
           <Route path="/accounts-receivable" element={!isGeneralAdmin ? <AccountsReceivable /> : <Navigate to="/companies" />} />
           <Route path="/accounts-payable" element={!isGeneralAdmin ? <AccountsPayable /> : <Navigate to="/companies" />} />
-          
+
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </InitialAccountsSetup>
@@ -179,6 +187,7 @@ function App() {
         <title>JaiderHerTur26 - Sistema de Contabilidad</title>
         <meta name="description" content="Gestiona tu contabilidad de forma profesional con JaiderHerTur26." />
       </Helmet>
+
       <CompanyContext.Provider value={companyContextValue}>
         <Router>
           <Toaster />
