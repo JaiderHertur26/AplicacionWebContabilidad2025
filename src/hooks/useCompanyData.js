@@ -1,125 +1,155 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useCompany } from '@/App';
 
-const GITHUB_RAW_URL = "https://raw.githubusercontent.com/JaiderHertur26/AplicacionWebContabilidad/main/data.json";
+const GITHUB_RAW_URL =
+  "https://raw.githubusercontent.com/JaiderHertur26/AplicacionWebContabilidad/main/data.json";
 
 export function useCompanyData(storageKey) {
-    const { activeCompany } = useCompany();
-    const [data, setData] = useState([]);
-    const [isLoaded, setIsLoaded] = useState(false);
-    const isMounted = useRef(false);
+  const { activeCompany } = useCompany();
+  const [data, setData] = useState([]);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const isMounted = useRef(false);
 
-    const companyStorageKey = activeCompany ? `${activeCompany.id}-${storageKey}` : null;
+  const companyStorageKey = activeCompany
+    ? `${activeCompany.id}-${storageKey}`
+    : null;
 
-    // 🔹 1. Leer desde GitHub
-    const fetchFromGithub = async () => {
-        try {
-            const res = await fetch(GITHUB_RAW_URL);
-            const json = await res.json();
+  // ============================================================
+  // 🔹 1. LEER DATOS DESDE GITHUB
+  // ============================================================
+  const fetchFromGithub = async () => {
+    try {
+      const res = await fetch(GITHUB_RAW_URL, { cache: "no-cache" });
+      if (!res.ok) return [];
 
-            // Cada empresa tendrá su propia data
-            if (!activeCompany) return [];
+      const json = await res.json();
+      if (!activeCompany) return [];
 
-            const companyId = activeCompany.id;
+      const companyId = activeCompany.id;
 
-            // Estructura: json[empresaId][tipo]
-            if (!json[companyId]) return [];
+      // Si la empresa NO existe en data.json → devolver vacío
+      if (!json[companyId]) return [];
 
-            return json[companyId][storageKey] || [];
+      // Retorna el bloque solicitado
+      return json[companyId][storageKey] || [];
 
-        } catch (err) {
-            console.error("Error cargando desde GitHub:", err);
-            return [];
+    } catch (err) {
+      console.error("❌ Error cargando desde GitHub:", err);
+      return [];
+    }
+  };
+
+  // ============================================================
+  // 🔹 2. CARGAR DATA INICIAL (GitHub → LocalStorage → App)
+  // ============================================================
+  useEffect(() => {
+    isMounted.current = true;
+    setIsLoaded(false);
+
+    if (!companyStorageKey) {
+      setData([]);
+      setIsLoaded(true);
+      return;
+    }
+
+    const loadData = async () => {
+      // 1. Intentar cargar desde GitHub
+      const githubData = await fetchFromGithub();
+
+      if (isMounted.current) {
+
+        if (githubData && githubData.length > 0) {
+          setData(githubData);
+          localStorage.setItem(companyStorageKey, JSON.stringify(githubData));
+          setIsLoaded(true);
+          return;
         }
+
+        // 2. Si GitHub no tiene nada, usar localStorage
+        const stored = localStorage.getItem(companyStorageKey);
+        setData(stored ? JSON.parse(stored) : []);
+        setIsLoaded(true);
+      }
     };
 
-    useEffect(() => {
-        isMounted.current = true;
-        setIsLoaded(false);
+    loadData();
 
-        if (!companyStorageKey) {
-            setData([]);
-            setIsLoaded(true);
-            return;
+    return () => {
+      isMounted.current = false;
+    };
+  }, [companyStorageKey, activeCompany]);
+
+  // ============================================================
+  // 🔹 3. GUARDAR DATA Y SINCRONIZAR TODO EL LOCALSTORAGE A GITHUB
+  // ============================================================
+  const saveData = useCallback(
+    (newData, options = {}) => {
+      if (!companyStorageKey) return;
+
+      // 1. Guardar normalmente en localStorage
+      localStorage.setItem(companyStorageKey, JSON.stringify(newData));
+
+      if (isMounted.current && !options.silent) {
+        setData(newData);
+      }
+
+      // Notificar cambios internos
+      window.dispatchEvent(
+        new CustomEvent("storage-updated", {
+          detail: { key: companyStorageKey },
+        })
+      );
+
+      // 2. COPIA COMPLETA DEL LOCALSTORAGE
+      const full = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        try {
+          full[key] = JSON.parse(localStorage.getItem(key));
+        } catch {
+          full[key] = localStorage.getItem(key);
         }
+      }
 
-        const loadData = async () => {
-            // 🔹 Primero intentamos cargar desde GitHub
-            const githubData = await fetchFromGithub();
+      // 3. ENVIAR TOTAL A GITHUB
+      fetch("/api/saveToGithub", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `Sync localStorage → GitHub (${companyStorageKey})`,
+          content: full
+        }),
+      });
+    },
+    [companyStorageKey]
+  );
 
-            if (isMounted.current && githubData.length > 0) {
-                setData(githubData);
-                setIsLoaded(true);
-
-                // Guardamos copia local (caché)
-                localStorage.setItem(companyStorageKey, JSON.stringify(githubData));
-                return;
-            }
-
-            // 🔹 Si GitHub no trae nada, usar localStorage
-            try {
-                const stored = localStorage.getItem(companyStorageKey);
-                if (isMounted.current) {
-                    setData(stored ? JSON.parse(stored) : []);
-                }
-            } catch (error) {
-                console.error(`Error parsing ${companyStorageKey}`, error);
-                setData([]);
-            } finally {
-                if (isMounted.current) {
-                    setIsLoaded(true);
-                }
-            }
-        };
-
-        loadData();
-
-        return () => {
-            isMounted.current = false;
-        };
-
-    }, [companyStorageKey, activeCompany]);
-
-
-    // 🔹 SaveData (esto aún guarda solo en localStorage)
-    const saveData = useCallback((newData, options = {}) => {
-
-        if (companyStorageKey) {
-            localStorage.setItem(companyStorageKey, JSON.stringify(newData));
-
-            if (isMounted.current && !options.silent) {
-                setData(newData);
-            }
-
-            window.dispatchEvent(new CustomEvent('storage-updated', {
-                detail: { key: companyStorageKey }
-            }));
+  // ============================================================
+  // 🔹 4. ESCUCHAR CAMBIOS DE OTRAS PARTES DE LA APP
+  // ============================================================
+  useEffect(() => {
+    const handleStorageUpdate = (event) => {
+      if (event.detail.key === companyStorageKey) {
+        try {
+          const stored = localStorage.getItem(companyStorageKey);
+          if (isMounted.current) {
+            setData(stored ? JSON.parse(stored) : []);
+          }
+        } catch (error) {
+          console.error(`Error reload ${companyStorageKey}`, error);
         }
-    }, [companyStorageKey]);
+      }
+    };
 
+    window.addEventListener("storage-updated", handleStorageUpdate);
 
+    return () => {
+      window.removeEventListener("storage-updated", handleStorageUpdate);
+    };
+  }, [companyStorageKey]);
 
-    // 🔹 Listener para cambios externos
-    useEffect(() => {
-        const handleStorageUpdate = (event) => {
-            if (event.detail.key === companyStorageKey) {
-                try {
-                    const stored = localStorage.getItem(companyStorageKey);
-                    if (isMounted.current) {
-                        setData(stored ? JSON.parse(stored) : []);
-                    }
-                } catch (error) {
-                    console.error(`Error reload ${companyStorageKey}`, error);
-                }
-            }
-        };
-
-        window.addEventListener('storage-updated', handleStorageUpdate);
-
-        return () => {
-            window.removeEventListener('storage-updated', handleStorageUpdate);
-        };
-    }, [companyStorageKey]);
-
-    return [data, saveData, isLoaded];
+  // ============================================================
+  // 🔹 RETURN FINAL
+  // ============================================================
+  return [data, saveData, isLoaded];
 }

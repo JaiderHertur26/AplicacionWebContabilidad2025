@@ -55,12 +55,37 @@ const InitialAccountsSetup = ({ children }) => {
   return isAccountsLoaded || !activeCompany ? children : null;
 };
 
+// === SINCRONIZACIÓN REMOTA GITHUB ===
+const GITHUB_RAW_URL = "https://raw.githubusercontent.com/usuario/repositorio/main/data.json";
+
+async function loadRemoteData() {
+  try {
+    const res = await fetch(GITHUB_RAW_URL);
+    const cloud = await res.json();
+
+    if (cloud.localStorage) {
+      Object.keys(cloud.localStorage).forEach(key => {
+        localStorage.setItem(key, JSON.stringify(cloud.localStorage[key]));
+      });
+    }
+  } catch (e) {
+    console.error("Error cargando data remota:", e);
+  }
+}
+// =====================================
+
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeCompany, setActiveCompany] = useState(null);
   const [companies, setCompanies] = useState([]);
   const [isGeneralAdmin, setIsGeneralAdmin] = useState(false);
+
+// === CARGAR DATA DESDE GITHUB ===
+  useEffect(() => {
+    loadRemoteData();
+  }, []);
+  // ================================
 
   useEffect(() => {
     const session = localStorage.getItem('auth_session');
