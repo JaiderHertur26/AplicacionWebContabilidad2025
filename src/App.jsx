@@ -1,3 +1,4 @@
+// src/App.jsx
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
@@ -19,10 +20,8 @@ import AccountsReceivable from '@/pages/AccountsReceivable';
 import AccountsPayable from '@/pages/AccountsPayable';
 import { Toaster } from '@/components/ui/toaster';
 import { useCompanyData } from '@/hooks/useCompanyData';
-
-// Import de sincronización
-import { loadLocalStorageFromGitHub } from "./lib/loadLocalStorageFromGitHub";
-import { syncLocalStorage } from "./lib/syncLocalStorage";
+import { loadLocalStorageFromGitHub } from './lib/loadLocalStorageFromGitHub';
+import { syncLocalStorage } from './lib/syncLocalStorage';
 
 const CompanyContext = createContext();
 export const useCompany = () => useContext(CompanyContext);
@@ -55,20 +54,26 @@ const InitialAccountsSetup = ({ children }) => {
   return isAccountsLoaded || !activeCompany ? children : null;
 };
 
-
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeCompany, setActiveCompany] = useState(null);
   const [companies, setCompanies] = useState([]);
   const [isGeneralAdmin, setIsGeneralAdmin] = useState(false);
+  const [isStorageLoaded, setIsStorageLoaded] = useState(false);
 
-  // 1️⃣ Cargar localStorage desde GitHub al iniciar
+  // 🔹 Cargar localStorage desde GitHub al inicio
   useEffect(() => {
-    loadLocalStorageFromGitHub();
+    const loadStorage = async () => {
+      await loadLocalStorageFromGitHub();
+      setIsStorageLoaded(true);
+    };
+    loadStorage();
   }, []);
 
-  // 2️⃣ Inicializar sesión desde localStorage
+  // 🔹 Leer sesión después de cargar localStorage
   useEffect(() => {
+    if (!isStorageLoaded) return;
+
     const session = localStorage.getItem('auth_session');
     if (session) {
       if (session === 'general_admin') {
@@ -89,57 +94,44 @@ function App() {
         }
       }
     }
-  }, []);
-
-  // 3️⃣ Sincronización automática: cada vez que cambie auth_session, companies o activeCompany
-  useEffect(() => {
-    if (isAuthenticated) {
-      localStorage.setItem('auth_session', isGeneralAdmin ? 'general_admin' : activeCompany?.id || '');
-      localStorage.setItem('companies', JSON.stringify(companies));
-      if (!isGeneralAdmin && activeCompany) {
-        localStorage.setItem('activeCompany', JSON.stringify(activeCompany));
-      }
-      // Sincronizar automáticamente con GitHub
-      syncLocalStorage();
-    }
-  }, [isAuthenticated, isGeneralAdmin, companies, activeCompany]);
+  }, [isStorageLoaded]);
 
   const handleLogin = (loginData) => {
     setIsAuthenticated(true);
     if (loginData.isGeneralAdmin) {
       setIsGeneralAdmin(true);
       setActiveCompany(null);
+      localStorage.setItem('auth_session', 'general_admin');
     } else {
       setIsGeneralAdmin(false);
       setActiveCompany(loginData.company);
+      localStorage.setItem('auth_session', loginData.company.id);
     }
     const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
     setCompanies(storedCompanies);
+    syncLocalStorage(); // Guardar cambios en GitHub
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
     setIsGeneralAdmin(false);
-    localStorage.removeItem('auth_session');
     setActiveCompany(null);
-    // Sincronizar cambios
-    syncLocalStorage();
+    localStorage.removeItem('auth_session');
   };
 
   const selectCompany = (company) => {
     if (isGeneralAdmin) return;
     if (company.id !== activeCompany?.id) {
-       handleLogout();
+      handleLogout();
     }
   };
-  
+
   const companyContextValue = {
     activeCompany,
     selectCompany,
     companies,
     setCompanies,
-    isGeneralAdmin,
-    setActiveCompany
+    isGeneralAdmin
   };
 
   const MainApp = () => (
