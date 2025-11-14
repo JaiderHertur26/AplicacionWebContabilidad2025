@@ -25,6 +25,25 @@
       "voucherNumber": 2
     }
   ],
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+  "companies": [
+    {
+      "name": "Jaider Miguel Herrera Turizo",
+      "doc": "1052042443",
+      "address": "CRA 10 #98-71",
+      "phone": "3167630763",
+      "username": "hertur26",
+      "password": "hertur26",
+      "id": "1763093468507",
+      "parentId": null
+    }
+  ],
+  "1763093468507-fixedAssets": [],
+=======
+>>>>>>> 27d6d846 (Actualización)
+>>>>>>> 7cfdafd8 (Actualización)
   "1763093468507-accounts": [
     {
       "id": "17630935144250.2558830020011116",
@@ -42,6 +61,17 @@
       "name": "CAJA PRINCIPAL"
     },
     {
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+      "id": "17630935144250.7811247306064463",
+      "number": "11050501",
+      "name": "CAJA PRINCIPAL"
+    },
+    {
+=======
+>>>>>>> 27d6d846 (Actualización)
+>>>>>>> 7cfdafd8 (Actualización)
       "id": "17630935144250.3598981162741691",
       "number": "1120",
       "name": "CUENTAS DE AHORRO"
@@ -95,15 +125,514 @@
       "id": "17630935144250.2869219734844084",
       "number": "23",
       "name": "CUENTAS POR PAGAR"
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+    },
+    {
+      "id": "17630935144250.3228512370585316",
+      "number": "28150000",
+      "name": "INGRESOS RECIBIDOS PARA TERCEROS"
+    },
+    {
+      "id": "17630935144250.8314471016864039",
+      "number": "28150502",
+      "name": "ÓBOLO DE SAN PEDRO"
+    },
+    {
+      "id": "17630935144250.8170324970681035",
+      "number": "28150503",
+      "name": "T- SANTOS LUGARES"
+    },
+    {
+      "id": "17630935144250.11725725045140067",
+      "number": "28150505",
+      "name": "OCTUBRE MISIONERO"
+    },
+    {
+      "id": "17630935144250.9371240291705141",
+      "number": "28150513",
+      "name": "INFANCIA MISIONERA"
+    },
+    {
+      "id": "17630935144250.630203046238038",
+      "number": "28150513",
+      "name": "COMUNICACIÓN CRISTIANA DE BIENES"
+    },
+    {
+      "id": "17630935144250.7967618132444343",
+      "number": "28150514",
+      "name": "DONA NOBIS"
+    },
+    {
+      "id": "17630935144250.9840415200569191",
+      "number": "3",
+      "name": "PATRIMONIO"
+    },
+    {
+      "id": "17630935144250.12606430814668268",
+      "number": "4",
+      "name": "INGRESOS"
+    },
+    {
+      "id": "17630935144250.8785108603944896",
+      "number": "41708001",
+      "name": "MISA COMUNITARIA"
+    },
+    {
+      "id": "17630935144250.038887832938113376",
+      "number": "41708002",
+      "name": "MATRIMONIOS EN HORARIO PARROQUIAL"
+    },
+    {
+      "id": "17630935144250.8840713553371378",
+      "number": "41708003",
+      "name": "CONFIRMACIONES"
+    },
+    {
+      "id": "17630935144250.2799324598452074",
+      "number": "41708004",
+      "name": "BAUTISMOS"
+    },
+    {
+      "id": "17630935144250.4997726502086556",
+      "number": "41708005",
+      "name": "PRIMERA COMUNION"
+    },
+    {
+      "id": "17630935144250.6587260444555908",
+      "number": "41708006",
+      "name": "MISA DE FRATERNIDAD O ASOCIACION"
+    },
+    {
+      "id": "17630935144250.18897544182896442",
+      "number": "41708007",
+      "name": "MISA EXEQUIAL"
+    },
+    {
+      "id": "17630935144250.04945654627880214",
+      "number": "41708008",
+      "name": "MISA UNITARIA EN HORARIO PARROQUIAL"
+    },
+    {
+      "id": "17630935144250.11216093622912204",
+      "number": "41708009",
+      "name": "MISA UNITARIA EN HORARIO ESPECIAL"
+    },
+    {
+      "id": "17630935144250.28928343675541035",
+      "number": "41708010",
+      "name": "FIESTAS PATRONALES"
+    },
+    {
+      "id": "17630935144250.9290615000904608",
+      "number": "41708011",
+      "name": "RETIROS ESPIRITUALES"
+    },
+    {
+      "id": "17630935144250.03907772053241343",
+      "number": "41708012",
+      "name": "MATRIMONIO EN HORARIO ESPECIAL"
+    },
+    {
+      "id": "17630935144250.6699223873847399",
+      "number": "417086",
+      "name": "DESPACHO PARROQUIAL"
+    },
+    {
+      "id": "17630935144250.500728503653771",
+      "number": "41708601",
+      "name": "PARTIDA"
+    },
+    {
+      "id": "17630935144250.7807271389503466",
+      "number": "41708603",
+      "name": "CERTIFICADO"
+    },
+    {
+      "id": "17630935144250.4649203051651667",
+      "number": "41708604",
+      "name": "PERMISOS"
+    },
+    {
+      "id": "17630935144250.4013376042256055",
+      "number": "41708605",
+      "name": "DISPENSA"
+    },
+    {
+      "id": "17630935144250.39504688447557523",
+      "number": "41708606",
+      "name": "CURSO PRESACRAMENTALES"
+    },
+    {
+      "id": "17630935144250.29999116776886614",
+      "number": "41708607",
+      "name": "NIHIL OBSTAT"
+    },
+    {
+      "id": "17630935144250.3341971022893404",
+      "number": "417087",
+      "name": "OFRENDAS"
+    },
+    {
+      "id": "17630935144250.18880297666442303",
+      "number": "41708701",
+      "name": "COLECTA DOMINICAL"
+    },
+    {
+      "id": "17630935144250.1479710639574192",
+      "number": "41708702",
+      "name": "COLECTA DIARIA"
+    },
+    {
+      "id": "17630935144250.9881976737206473",
+      "number": "41708703",
+      "name": "OFRENDA RECIBIDA EN SECTORES O CELULAS"
+    },
+    {
+      "id": "17630935144250.9802762437191578",
+      "number": "41708704",
+      "name": "OFRENDA SEMANA SANTA (INCLUIDO SOBRES)"
+    },
+    {
+      "id": "17630935144250.6855890348290926",
+      "number": "41708705",
+      "name": "OFRENDA NAVIDAD (INCLUYE SOBRES)"
+    },
+    {
+      "id": "17630935144250.4453802292518658",
+      "number": "41708706",
+      "name": "DONACIONES POR ACTIVIDADES "
+    },
+    {
+      "id": "17630935144250.37755581602984534",
+      "number": "41708713",
+      "name": "DONACIONES FONDO DESPACHO (LIMOSNAS) "
+    },
+    {
+      "id": "17630935144250.7631902479395895",
+      "number": "41708714",
+      "name": "DONACIONES CATEDRATON PARROQUIAL"
+    },
+    {
+      "id": "17630935144250.2203715572486845",
+      "number": "41708715",
+      "name": "DONACIONES POR BINGOS"
+    },
+    {
+      "id": "17630935144250.16992888624760905",
+      "number": "41708716",
+      "name": "OTRAS DONACIONES"
+    },
+    {
+      "id": "17630935144250.5427519795993188",
+      "number": "5",
+      "name": "EGRESOS"
+    },
+    {
+      "id": "17630935144250.28616749132137786",
+      "number": "51060101",
+      "name": "EMOLUMENTO"
+    },
+    {
+      "id": "17630935144250.19249953713786983",
+      "number": "51070101",
+      "name": "GASTO DE CULTO"
+    },
+    {
+      "id": "17630935144250.3314109864173892",
+      "number": "51070102",
+      "name": "VINO"
+    },
+    {
+      "id": "17630935144250.665003992467054",
+      "number": "51070103",
+      "name": "HOSTIAS"
+    },
+    {
+      "id": "17630935144250.1893282898768469",
+      "number": "51070104",
+      "name": "CIRIOS Y VELONES"
+    },
+    {
+      "id": "17630935144250.3631652326772229",
+      "number": "51070105",
+      "name": "CARBON LITURGICO"
+    },
+    {
+      "id": "17630935144250.15577796633910757",
+      "number": "51070106",
+      "name": "PARAFINA LIQUIDA"
+    },
+    {
+      "id": "17630935144250.8497365278037552",
+      "number": "51070107",
+      "name": "FLORES PARA EL SANTISIMO"
+    },
+    {
+      "id": "17630935144250.3922507288001632",
+      "number": "51070108",
+      "name": "ACEITE PARA EL SANTISIMO"
+    },
+    {
+      "id": "17630935144250.44744274737805523",
+      "number": "51070109",
+      "name": "MINISTERIO DE LA MUSICA"
+    },
+    {
+      "id": "17630935144250.8844978756085892",
+      "number": "51070110",
+      "name": "HOJAS DOMINICALES"
+    },
+    {
+      "id": "17630935144250.5800753853299213",
+      "number": "51070111",
+      "name": "INCIENSO"
+    },
+    {
+      "id": "17630935144250.5107694812183122",
+      "number": "51250502",
+      "name": "MUTUO AUXILIO SACERDOTAL"
+    },
+    {
+      "id": "17630935144250.665163962618407",
+      "number": "51259001",
+      "name": "APORTES CUOTA FIJA CURIA"
+    },
+    {
+      "id": "17630935144250.022421142647705783",
+      "number": "51259001",
+      "name": "CUOTA ÚNICA CURIA"
+    },
+    {
+      "id": "17630935144250.17056554759474674",
+      "number": "51259502",
+      "name": "CUOTA PRIMER DOMINGO"
+    },
+    {
+      "id": "17630935144250.247591503643807",
+      "number": "51350501",
+      "name": "SERVICIO DE ASEO"
+    },
+    {
+      "id": "17630935144250.8423900322210526",
+      "number": "51350502",
+      "name": "SERVICIO DE VIGILANCIA"
+    },
+    {
+      "id": "17630935144250.7561265422646217",
+      "number": "51351001",
+      "name": "SERVICIOS TEMPORALES"
+    },
+    {
+      "id": "17630935144250.03478302006417344",
+      "number": "51351002",
+      "name": "SACRISTAN AUXILIAR"
+    },
+    {
+      "id": "17630935144250.4404023558751763",
+      "number": "51351501",
+      "name": "SERVICIO ASISTENCIA TECNICA"
+    },
+    {
+      "id": "17630935144250.9694651963497768",
+      "number": "51352001",
+      "name": "PROCESAMIENTO DE DATOS"
+    },
+    {
+      "id": "17630935144250.2013312257383819",
+      "number": "51352501",
+      "name": "SERVICIO DE AGUA"
+    },
+    {
+      "id": "17630935144250.5232417948280329",
+      "number": "51353001",
+      "name": "SERVICIO DE ENERGIA"
+    },
+    {
+      "id": "17630935144250.7941192971527474",
+      "number": "51353501",
+      "name": "SERVICIO DE CELULARES"
+    },
+    {
+      "id": "17630935144250.2347796497104605",
+      "number": "51353502",
+      "name": "SERVICIO DE TELEFONO"
+    },
+    {
+      "id": "17630935144250.5318669674342634",
+      "number": "51355501",
+      "name": "SERVICIO DE INTERNET"
+    },
+    {
+      "id": "17630935144250.010016168763934963",
+      "number": "51356001",
+      "name": "SERVICIO DE GAS NATURAL"
+    },
+    {
+      "id": "17630935144250.7204143045625149",
+      "number": "51359501",
+      "name": "SERVICIO DE TELEVISION"
+    },
+    {
+      "id": "17630935144250.3116356084255876",
+      "number": "51359502",
+      "name": "SERVICIO DE TELEVISION E INTERNET"
+    },
+    {
+      "id": "17630935144250.9029258566662748",
+      "number": "51359503",
+      "name": "OTROS SERVICIOS"
+    },
+    {
+      "id": "17630935144250.628504041590642",
+      "number": "51451001",
+      "name": "MATERIALES GENERALES"
+    },
+    {
+      "id": "17630935144250.09620206029480916",
+      "number": "51451002",
+      "name": "MANTENIMIENTO CASA CURAL (MANO DE OBRA)"
+    },
+    {
+      "id": "17630935144250.9560796378735295",
+      "number": "51451003",
+      "name": "MANTENIMIENTO OFICINAS (MANO DE OBRA)"
+    },
+    {
+      "id": "17630935144250.20306991022702603",
+      "number": "51451004",
+      "name": "MANTENIMIENTO TEMPLO (MANO DE OBRA)"
+    },
+    {
+      "id": "17630935144250.9001072800325357",
+      "number": "51451005",
+      "name": "MANTENIMIENTO CAPILLA (MANO DE OBRA)"
+    },
+    {
+      "id": "17630935144250.5641823140888925",
+      "number": "51451007",
+      "name": "IMPERMEABILIZACION TECHO TEMPLO"
+    },
+    {
+      "id": "17630935144250.663895472866161",
+      "number": "51451008",
+      "name": "IMPERMEABILIZACION TECHO CASA CURAL"
+    },
+    {
+      "id": "17630935144250.5988041911339974",
+      "number": "51451009",
+      "name": "MANTENIMIENTO CASA CURAL EXTERIOR"
+    },
+    {
+      "id": "17630935144250.2761132074837491",
+      "number": "51451010",
+      "name": "MANTENIMIENTO EQUIPOS OFICINAS"
+    },
+    {
+      "id": "17630935144250.934793971789348",
+      "number": "51451011",
+      "name": "MANTENIMIENTO EQUIPOS CASA CURAL"
+    },
+    {
+      "id": "17630935144250.8750448570996726",
+      "number": "51451012",
+      "name": "MANTENIMIENTO EQUIPOS TEMPLO"
+    },
+    {
+      "id": "17630935144250.35483042411662613",
+      "number": "51451013",
+      "name": "INSTALACIONES ELECTRICAS"
+    },
+    {
+      "id": "17630935144250.7342062001707125",
+      "number": "51451014",
+      "name": "SI-CONSTRUCCIONES Y EDIFICACIONES"
+    },
+    {
+      "id": "17630935144250.441538997071072",
+      "number": "51451024",
+      "name": "IVA MATERIALES"
+    },
+    {
+      "id": "17630935144250.9063691063709599",
+      "number": "514515",
+      "name": "MAQUINARIA Y EQUIPO"
+    },
+    {
+      "id": "17630935144250.06078429077887615",
+      "number": "51451501",
+      "name": "EQUIPO DE SONIDO"
+    },
+    {
+      "id": "17630935144250.8558653875112215",
+      "number": "51451502",
+      "name": "SI-MAQUINARIA Y EQUIPO"
+    },
+    {
+      "id": "17630935144250.5443628280432306",
+      "number": "514520",
+      "name": "EQUIPOS DE OFICINA"
+    },
+    {
+      "id": "17630935144250.985658368136808",
+      "number": "51452001",
+      "name": "EQUIPOS DE OFICINA"
+    },
+    {
+      "id": "17630935144250.043601928347944185",
+      "number": "51953101",
+      "name": "PAPEL ECLESIASTICO"
+    },
+    {
+      "id": "17630935144250.05979382628672114",
+      "number": "51953102",
+      "name": "EXPEDIENTE Y FORMULARIOS"
+    },
+    {
+      "id": "17630935144250.3766285646950389",
+      "number": "51953103",
+      "name": "PROCLAMAS MATRIMONIALES"
+    },
+    {
+      "id": "17630935144250.8547675264819918",
+      "number": "51953104",
+      "name": "ESTAMPILLAS ARQUIDIOCESANA"
+    },
+    {
+      "id": "17630935144250.35486029106132144",
+      "number": "51953105",
+      "name": "PAPELERIA NIHIL OBSTAT"
+    },
+    {
+      "id": "17630935144250.36847935541116084",
+      "number": "51953106",
+      "name": "ARANCEL CURIA"
+    },
+    {
+      "id": "17630935144250.2227499771589715",
+      "number": "529510",
+      "name": "LIBROS, SUSCRIPCIONES"
+>>>>>>> 7cfdafd8 (Actualización)
+    }
+    // Puedes seguir agregando todas las cuentas restantes siguiendo el mismo formato
+  ],
+<<<<<<< HEAD
+  "1763093468507-fixedAssets": [],
+=======
+=======
     }
     // Puedes seguir agregando todas las cuentas restantes siguiendo el mismo formato
   ],
   "1763093468507-fixedAssets": [],
+>>>>>>> 27d6d846 (Actualización)
+>>>>>>> 7cfdafd8 (Actualización)
   "1763093468507-voucher-sequence": {
     "income": 2,
     "expense": 0,
     "transfer": 0
   },
+<<<<<<< HEAD
   "companies": [
     {
       "id": "1763093468507",
@@ -118,3 +647,25 @@
   ],
   "auth_session": 1763093468507
 }
+=======
+<<<<<<< HEAD
+  "auth_session": 1763093468507
+}
+=======
+  "companies": [
+    {
+      "id": "1763093468507",
+      "name": "Jaider Miguel Herrera Turizo",
+      "doc": "1052042443",
+      "address": "CRA 10 #98-71",
+      "phone": "3167630763",
+      "username": "hertur26",
+      "password": "hertur26",
+      "parentId": null
+    }
+  ],
+  "auth_session": 1763093468507
+}
+>>>>>>> 27d6d846 (Actualización)
+>>>>>>> 7cfdafd8 (Actualización)
+
