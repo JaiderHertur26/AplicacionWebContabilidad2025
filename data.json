@@ -23,6 +23,16 @@
       "isFixedAsset": false,
       "id": "1763094626734",
       "voucherNumber": 2
+    },
+    {
+      "id": "txn-inc-1763120101131",
+      "type": "income",
+      "date": "2025-11-14",
+      "description": "Ingreso por venta a crédito: gfgfg",
+      "amount": "14000",
+      "category": "CONFIRMACIONES",
+      "destination": "accounts_receivable",
+      "isReceivablePayable": true
     }
   ],
   "companies": [
