@@ -1,4 +1,4 @@
 {
-  "companies": "[]",
+  "companies": "[{\"name\":\"Parroquia Padre Misericordioso\",\"id\":\"1761858977331\",\"doc\":\"802012765\",\"address\":\"CRA 9G # 77 - 42\",\"phone\":\"3167630763\",\"username\":\"pa_2025\",\"password\":\"hertur26\"},{\"name\":\"Parroquia María Auxilio de los Cristianos\",\"doc\":\"802020683\",\"address\":\"Cra 10 # 98 - 71\",\"phone\":\"3167630763\",\"username\":\"ma_2025\",\"password\":\"hertur26\",\"id\":\"1761937942548\",\"parentId\":null},{\"name\":\"Célula Monte Carmelo\",\"doc\":\"802020683\",\"address\":\"CRA 12A # 84B - 189\",\"phone\":\"3167630763\",\"username\":\"ca_2025\",\"password\":\"hertur26\",\"id\":\"1761938046047\",\"parentId\":\"1761937942548\"}]",
   "auth_session": "general_admin"
 }
