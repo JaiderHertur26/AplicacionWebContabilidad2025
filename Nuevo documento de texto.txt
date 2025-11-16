@@ -1,4 +1,0 @@
-git remote add origin https://github.com/JaiderHertur26/AplicacionWebContabilidad2025.git
-
-
-git remote set-url origin https://github.com/JaiderHertur26/AplicacionWebContabilidad2025.git
