@@ -1,4 +1,4 @@
-// src/App.jsx
+
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
@@ -20,21 +20,16 @@ import AccountsReceivable from '@/pages/AccountsReceivable';
 import AccountsPayable from '@/pages/AccountsPayable';
 import { Toaster } from '@/components/ui/toaster';
 import { useCompanyData } from '@/hooks/useCompanyData';
-import { loadLocalStorageFromGitHub } from './lib/loadLocalStorageFromGitHub';
-import { syncLocalStorage } from './lib/syncLocalStorage';
-import FormularioTransaccion from './components/FormularioTransaccion';
-import ListaTransacciones from './components/ListaTransacciones';
-import { getActiveCompany } from './utils/storage';
 
 const CompanyContext = createContext();
 export const useCompany = () => useContext(CompanyContext);
 
-// Inicialización de cuentas obligatorias
 const InitialAccountsSetup = ({ children }) => {
   const { activeCompany } = useCompany();
-  const [accounts, saveAccounts, isAccountsLoaded] = useCompanyData('accounts');
+  const [accounts, saveAccounts, isAccountsLoaded] = useCompanyData('accounts'); // Use isLoaded state
 
   useEffect(() => {
+    // Act only when data is loaded and there's an active company
     if (activeCompany && isAccountsLoaded) {
       const requiredAccounts = [
         { number: '110505', name: 'CAJA GENERAL' },
@@ -44,99 +39,97 @@ const InitialAccountsSetup = ({ children }) => {
         { number: '23', name: 'CUENTAS POR PAGAR' }
       ];
 
+      // Only add accounts if the accounts array is completely empty
       if (accounts.length === 0) {
-        const newAccounts = requiredAccounts.map(reqAcc => ({
-          id: `${Date.now()}-${reqAcc.number}`,
-          number: reqAcc.number,
-          name: reqAcc.name,
-        }));
-        saveAccounts(newAccounts.sort((a, b) => a.number.localeCompare(b.number)));
+          const newAccounts = requiredAccounts.map(reqAcc => ({
+            id: `${Date.now()}-${reqAcc.number}`,
+            number: reqAcc.number,
+            name: reqAcc.name,
+          }));
+          saveAccounts(newAccounts.sort((a, b) => a.number.localeCompare(b.number)));
       }
     }
   }, [activeCompany, accounts, saveAccounts, isAccountsLoaded]);
 
+  // Render children immediately if accounts are loaded or if no company is active
   return isAccountsLoaded || !activeCompany ? children : null;
 };
 
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [activeCompany, setActiveCompany] = useState(getActiveCompany());
-  const [companies, setCompanies] = useState(JSON.parse(localStorage.getItem('companies') || '[]'));
+  const [activeCompany, setActiveCompany] = useState(null);
+  const [companies, setCompanies] = useState([]);
   const [isGeneralAdmin, setIsGeneralAdmin] = useState(false);
-  const [isStorageLoaded, setIsStorageLoaded] = useState(false);
 
-  // 🔹 Cargar localStorage desde GitHub al inicio
   useEffect(() => {
-    const loadStorage = async () => {
-      await loadLocalStorageFromGitHub();
-      setIsStorageLoaded(true);
-    };
-    loadStorage();
-  }, []);
-
-  // 🔹 Leer sesión después de cargar localStorage
-  useEffect(() => {
-    if (!isStorageLoaded) return;
-
     const session = localStorage.getItem('auth_session');
     if (session) {
       if (session === 'general_admin') {
         setIsAuthenticated(true);
         setIsGeneralAdmin(true);
+        const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
+        setCompanies(storedCompanies);
       } else {
-        const loggedInCompany = companies.find(c => c.id === session);
+        const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
+        const loggedInCompany = storedCompanies.find(c => c.id === session);
         if (loggedInCompany) {
+          setCompanies(storedCompanies);
           setActiveCompany(loggedInCompany);
           setIsAuthenticated(true);
+          setIsGeneralAdmin(false);
         } else {
           localStorage.removeItem('auth_session');
         }
       }
     }
-  }, [isStorageLoaded, companies]);
+  }, []);
 
   const handleLogin = (loginData) => {
     setIsAuthenticated(true);
     if (loginData.isGeneralAdmin) {
-      setIsGeneralAdmin(true);
-      setActiveCompany(null);
-      localStorage.setItem('auth_session', 'general_admin');
+        setIsGeneralAdmin(true);
+        setActiveCompany(null);
+        localStorage.setItem('auth_session', 'general_admin');
     } else {
-      setIsGeneralAdmin(false);
-      setActiveCompany(loginData.company);
-      localStorage.setItem('auth_session', loginData.company.id);
+        setIsGeneralAdmin(false);
+        setActiveCompany(loginData.company);
+        localStorage.setItem('auth_session', loginData.company.id);
     }
-    syncLocalStorage();
+    const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
+    setCompanies(storedCompanies);
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
     setIsGeneralAdmin(false);
-    setActiveCompany(null);
     localStorage.removeItem('auth_session');
+    setActiveCompany(null);
   };
 
+  const selectCompany = (company) => {
+    if (isGeneralAdmin) return;
+    if (company.id !== activeCompany?.id) {
+       handleLogout();
+    }
+  };
+  
   const companyContextValue = {
     activeCompany,
+    selectCompany,
     companies,
     setCompanies,
-    isGeneralAdmin
+    isGeneralAdmin,
   };
 
   const MainApp = () => (
     <Layout onLogout={handleLogout}>
       <InitialAccountsSetup>
-        <div className="max-w-xl mx-auto mt-6">
-          <h2 className="mb-4 text-lg font-semibold">
-            Empresa activa: {activeCompany?.name || 'Ninguna'}
-          </h2>
-          <FormularioTransaccion />
-          <ListaTransacciones />
-        </div>
         <Routes>
           <Route path="/" element={isGeneralAdmin ? <Navigate to="/companies" /> : <Dashboard />} />
           <Route path="/companies" element={<Companies />} />
           <Route path="/settings" element={<Settings />} />
+
           <Route path="/transactions" element={!isGeneralAdmin ? <Transactions /> : <Navigate to="/companies" />} />
           <Route path="/bank-accounts" element={!isGeneralAdmin ? <BankAccounts /> : <Navigate to="/companies" />} />
           <Route path="/fixed-assets" element={!isGeneralAdmin ? <FixedAssets /> : <Navigate to="/companies" />} />
@@ -148,6 +141,7 @@ function App() {
           <Route path="/book-closings" element={!isGeneralAdmin ? <BookClosings /> : <Navigate to="/companies" />} />
           <Route path="/accounts-receivable" element={!isGeneralAdmin ? <AccountsReceivable /> : <Navigate to="/companies" />} />
           <Route path="/accounts-payable" element={!isGeneralAdmin ? <AccountsPayable /> : <Navigate to="/companies" />} />
+          
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </InitialAccountsSetup>
