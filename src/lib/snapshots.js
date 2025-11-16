@@ -1,3 +1,8 @@
+// ===============================
+//  SNAPSHOTS JSON (GLOBAL/EMPRESAS)
+// ===============================
+
+// Guarda el JSON GLOBAL
 export async function saveSnapshotGlobal(globalData) {
   return await fetch("/api/saveSnapshot", {
     method: "POST",
@@ -9,6 +14,7 @@ export async function saveSnapshotGlobal(globalData) {
   });
 }
 
+// Guarda el JSON por EMPRESA
 export async function saveSnapshotEmpresa(empresaId, empresaData) {
   return await fetch("/api/saveSnapshot", {
     method: "POST",
@@ -20,15 +26,24 @@ export async function saveSnapshotEmpresa(empresaId, empresaData) {
   });
 }
 
+// Cargar cualquier JSON
 export async function loadSnapshot(filename) {
   const res = await fetch(`/api/getSnapshot?filename=${filename}`);
   return await res.json();
 }
 
+// Cargar global
 export async function loadSnapshotGlobal() {
   return loadSnapshot("JSON_GLOBAL.json");
 }
 
+// Cargar por empresa
 export async function loadSnapshotEmpresa(empresaId) {
   return loadSnapshot(`empresa_${empresaId}.json`);
+}
+
+// Listar todos los snapshots que existen
+export async function listSnapshots() {
+  const res = await fetch(`/api/listSnapshots`);
+  return await res.json();
 }
