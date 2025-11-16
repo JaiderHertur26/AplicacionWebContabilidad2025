@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
@@ -21,15 +20,27 @@ import AccountsPayable from '@/pages/AccountsPayable';
 import { Toaster } from '@/components/ui/toaster';
 import { useCompanyData } from '@/hooks/useCompanyData';
 
+// ===============================
+// 🔥 SNAPSHOT IMPORTS (Supabase)
+// ===============================
+import {
+  saveSnapshotGlobal,
+  saveSnapshotEmpresa,
+  loadSnapshotGlobal,
+  loadSnapshotEmpresa
+} from "./lib/snapshots";
+
 const CompanyContext = createContext();
 export const useCompany = () => useContext(CompanyContext);
 
+// ======================================
+// 📌 Inicialización de cuentas por defecto
+// ======================================
 const InitialAccountsSetup = ({ children }) => {
   const { activeCompany } = useCompany();
-  const [accounts, saveAccounts, isAccountsLoaded] = useCompanyData('accounts'); // Use isLoaded state
+  const [accounts, saveAccounts, isAccountsLoaded] = useCompanyData('accounts');
 
   useEffect(() => {
-    // Act only when data is loaded and there's an active company
     if (activeCompany && isAccountsLoaded) {
       const requiredAccounts = [
         { number: '110505', name: 'CAJA GENERAL' },
@@ -39,22 +50,20 @@ const InitialAccountsSetup = ({ children }) => {
         { number: '23', name: 'CUENTAS POR PAGAR' }
       ];
 
-      // Only add accounts if the accounts array is completely empty
       if (accounts.length === 0) {
-          const newAccounts = requiredAccounts.map(reqAcc => ({
-            id: `${Date.now()}-${reqAcc.number}`,
-            number: reqAcc.number,
-            name: reqAcc.name,
-          }));
-          saveAccounts(newAccounts.sort((a, b) => a.number.localeCompare(b.number)));
+        const newAccounts = requiredAccounts.map(reqAcc => ({
+          id: `${Date.now()}-${reqAcc.number}`,
+          number: reqAcc.number,
+          name: reqAcc.name,
+        }));
+
+        saveAccounts(newAccounts.sort((a, b) => a.number.localeCompare(b.number)));
       }
     }
   }, [activeCompany, accounts, saveAccounts, isAccountsLoaded]);
 
-  // Render children immediately if accounts are loaded or if no company is active
   return isAccountsLoaded || !activeCompany ? children : null;
 };
-
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -62,6 +71,16 @@ function App() {
   const [companies, setCompanies] = useState([]);
   const [isGeneralAdmin, setIsGeneralAdmin] = useState(false);
 
+  // ===============================
+  // 🔥 SNAPSHOT STATES
+  // ===============================
+  const [globalData, setGlobalData] = useState(null);
+  const [empresaData, setEmpresaData] = useState(null);
+  const empresaId = activeCompany ? activeCompany.id : null;
+
+  // ===============================
+  // 🔥 LOGIN / SESIÓN
+  // ===============================
   useEffect(() => {
     const session = localStorage.getItem('auth_session');
     if (session) {
@@ -85,17 +104,59 @@ function App() {
     }
   }, []);
 
+  // ===============================
+  // 🔥 CARGA AUTOMÁTICA DE SNAPSHOTS
+  // ===============================
+  useEffect(() => {
+    async function load() {
+      try {
+        const global = await loadSnapshotGlobal();
+        setGlobalData(global);
+
+        if (empresaId) {
+          const empresa = await loadSnapshotEmpresa(empresaId);
+          setEmpresaData(empresa);
+        }
+      } catch (err) {
+        console.log("No hay snapshots aún");
+      }
+    }
+
+    if (isAuthenticated) {
+      load();
+    }
+  }, [isAuthenticated, empresaId]);
+
+  // ===============================
+  // 🔥 GUARDAR SNAPSHOTS
+  // ===============================
+  async function guardarGlobal() {
+    await saveSnapshotGlobal(globalData);
+    console.log("✔ Snapshot global guardado");
+  }
+
+  async function guardarEmpresa() {
+    if (!empresaId) return;
+    await saveSnapshotEmpresa(empresaId, empresaData);
+    console.log("✔ Snapshot empresa guardado");
+  }
+
+  // ===============================
+  // LOGIN / LOGOUT HANDLERS
+  // ===============================
   const handleLogin = (loginData) => {
     setIsAuthenticated(true);
+
     if (loginData.isGeneralAdmin) {
-        setIsGeneralAdmin(true);
-        setActiveCompany(null);
-        localStorage.setItem('auth_session', 'general_admin');
+      setIsGeneralAdmin(true);
+      setActiveCompany(null);
+      localStorage.setItem('auth_session', 'general_admin');
     } else {
-        setIsGeneralAdmin(false);
-        setActiveCompany(loginData.company);
-        localStorage.setItem('auth_session', loginData.company.id);
+      setIsGeneralAdmin(false);
+      setActiveCompany(loginData.company);
+      localStorage.setItem('auth_session', loginData.company.id);
     }
+
     const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
     setCompanies(storedCompanies);
   };
@@ -110,10 +171,10 @@ function App() {
   const selectCompany = (company) => {
     if (isGeneralAdmin) return;
     if (company.id !== activeCompany?.id) {
-       handleLogout();
+      handleLogout();
     }
   };
-  
+
   const companyContextValue = {
     activeCompany,
     selectCompany,
@@ -122,11 +183,15 @@ function App() {
     isGeneralAdmin,
   };
 
+  // ===============================
+  // MAIN APP ROUTES
+  // ===============================
   const MainApp = () => (
     <Layout onLogout={handleLogout}>
       <InitialAccountsSetup>
         <Routes>
           <Route path="/" element={isGeneralAdmin ? <Navigate to="/companies" /> : <Dashboard />} />
+
           <Route path="/companies" element={<Companies />} />
           <Route path="/settings" element={<Settings />} />
 
@@ -141,10 +206,21 @@ function App() {
           <Route path="/book-closings" element={!isGeneralAdmin ? <BookClosings /> : <Navigate to="/companies" />} />
           <Route path="/accounts-receivable" element={!isGeneralAdmin ? <AccountsReceivable /> : <Navigate to="/companies" />} />
           <Route path="/accounts-payable" element={!isGeneralAdmin ? <AccountsPayable /> : <Navigate to="/companies" />} />
-          
+
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </InitialAccountsSetup>
+
+      {/* 🔥 BOTONES DE SNAPSHOTS TEMPORALES */}
+      <div className="p-4 flex gap-2">
+        <button onClick={guardarGlobal} className="px-4 py-2 bg-blue-600 text-white rounded">
+          Guardar Snapshot Global
+        </button>
+
+        <button onClick={guardarEmpresa} className="px-4 py-2 bg-green-600 text-white rounded">
+          Guardar Snapshot Empresa
+        </button>
+      </div>
     </Layout>
   );
 
@@ -152,11 +228,16 @@ function App() {
     <>
       <Helmet>
         <title>JaiderHerTur26 - Sistema de Contabilidad</title>
-        <meta name="description" content="Gestiona tu contabilidad de forma profesional con JaiderHerTur26." />
+        <meta
+          name="description"
+          content="Gestiona tu contabilidad de forma profesional con JaiderHerTur26."
+        />
       </Helmet>
+
       <CompanyContext.Provider value={companyContextValue}>
         <Router>
           <Toaster />
+
           {!isAuthenticated ? (
             <Routes>
               <Route path="/login" element={<Login onLogin={handleLogin} />} />
