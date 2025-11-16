@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
 
 export default async function handler(req, res) {
   const supabase = createClient(
@@ -6,16 +6,14 @@ export default async function handler(req, res) {
     process.env.SUPABASE_SERVICE_KEY
   );
 
-  const { data, error } = await supabase.storage
+  const { data, error } = await supabase
+    .storage
     .from(process.env.SUPABASE_BUCKET)
-    .list("", {
-      limit: 200,
-      offset: 0
-    });
+    .list();
 
   if (error) {
     return res.status(500).json({ error: error.message });
   }
 
-  return res.status(200).json(data.map(f => f.name));
+  return res.status(200).json(data);
 }

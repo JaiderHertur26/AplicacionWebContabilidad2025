@@ -1,10 +1,10 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
 
 export default async function handler(req, res) {
-  const { filename } = req.query;
+  const filename = req.query.filename;
 
   if (!filename) {
-    return res.status(400).json({ error: "Falta filename" });
+    return res.status(400).json({ error: "Archivo no especificado" });
   }
 
   const supabase = createClient(
@@ -12,7 +12,8 @@ export default async function handler(req, res) {
     process.env.SUPABASE_SERVICE_KEY
   );
 
-  const { data, error } = await supabase.storage
+  const { data, error } = await supabase
+    .storage
     .from(process.env.SUPABASE_BUCKET)
     .download(filename);
 
@@ -21,5 +22,7 @@ export default async function handler(req, res) {
   }
 
   const text = await data.text();
-  return res.status(200).json(JSON.parse(text));
+  const json = JSON.parse(text);
+
+  return res.status(200).json(json);
 }
