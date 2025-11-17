@@ -1,125 +1,139 @@
-import { createClient } from '@supabase/supabase-js';
+// ===========================
+// CONFIGURACIÓN SUPABASE
+// ===========================
+import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const SUPABASE_URL = "https://ejmufayqwosvuydmftih.supabase.co"; 
+const SUPABASE_ANON_KEY = "TU_ANON_KEY_AQUÍ"; // Reemplázalo
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// ===============================
-//  BUCKET DONDE SE GUARDAN
-// ===============================
-const BUCKET = "snapshots";
-
-// ===============================
-//  NOMBRE ARCHIVO GLOBAL
-// ===============================
+// ===========================
+// ARCHIVOS EN STORAGE
+// ===========================
 const GLOBAL_FILE = "JSON_GLOBAL.json";
+const COMPANY_PREFIX = "empresa_";
 
-// ============================================
-//  FUNCION: DESCARGAR ARCHIVO DESDE SUPABASE
-// ============================================
-async function downloadFile(filename) {
-  const { data, error } = await supabase.storage
-    .from(BUCKET)
-    .download(filename);
-
-  if (error) {
-    console.warn("No existe aún:", filename);
-    return null;
-  }
-
-  const text = await data.text();
-  return JSON.parse(text);
-}
-
-// ============================================
-//  FUNCION: SUBIR ARCHIVO A SUPABASE
-// ============================================
-async function uploadFile(filename, jsonData) {
-  const blob = new Blob([JSON.stringify(jsonData)], {
-    type: "application/json",
-  });
-
-  await supabase.storage
-    .from(BUCKET)
-    .upload(filename, blob, {
-      upsert: true, // sobrescribe siempre
-    });
-
-  console.log("Archivo actualizado en Supabase:", filename);
-}
-
-// ======================================================
-//  CARGAR LOCALSTORAGE DESDE SUPABASE AL INICIAR APP
-// ======================================================
+// ===========================
+// Cargar datos iniciales
+// ===========================
 export async function loadLocalStorageFromSupabase() {
-  console.log("Cargando datos desde Supabase…");
+  console.log("Cargando datos almacenados en Supabase…");
 
-  // ========== CARGA JSON GLOBAL ==========
-  const globalJson = await downloadFile(GLOBAL_FILE);
+  // ---- Cargar archivo global ----
+  const { data: globalFile } = await supabase.storage
+    .from("snapshots")
+    .download(GLOBAL_FILE);
 
-  if (globalJson) {
-    localStorage.setItem("GLOBAL_JSON", JSON.stringify(globalJson));
-    console.log("GLOBAL_JSON cargado desde Supabase");
+  if (globalFile) {
+    const text = await globalFile.text();
+    try {
+      const json = JSON.parse(text);
+      localStorage.setItem("JSON_GLOBAL", JSON.stringify(json));
+      console.log("JSON_GLOBAL cargado");
+    } catch (e) {
+      console.warn("Error leyendo GLOBAL:", e);
+    }
   }
 
-  // ========== CARGA EMPRESAS GUARDADAS ==========
-  // lista de archivos en el bucket
-  const { data: files } = await supabase.storage.from(BUCKET).list("");
+  // ---- Cargar lista de empresas existentes ----
+  const { data: files } = await supabase.storage
+    .from("snapshots")
+    .list();
 
   if (files) {
-    for (const file of files) {
-      if (file.name.startsWith("empresa_")) {
-        const empresaData = await downloadFile(file.name);
-        if (empresaData) {
-          localStorage.setItem(file.name, JSON.stringify(empresaData));
+    files
+      .filter(f => f.name.startsWith(COMPANY_PREFIX))
+      .forEach(async (file) => {
+        const { data: cFile } = await supabase.storage
+          .from("snapshots")
+          .download(file.name);
+
+        if (cFile) {
+          const text = await cFile.text();
+          try {
+            const json = JSON.parse(text);
+            localStorage.setItem(file.name, JSON.stringify(json));
+          } catch (e) {}
         }
-      }
-    }
-  }
+      });
 
-  console.log("Sincronización inicial completa.");
+    console.log("Empresas cargadas en localStorage");
+  }
 }
 
-// ======================================================
-//  GUARDAR DATOS GLOBAL EN SUPABASE
-// ======================================================
+// ===========================
+// Guardar JSON_GLOBAL
+// ===========================
 export async function saveGlobalJsonToSupabase() {
-  const data = localStorage.getItem("GLOBAL_JSON");
-  if (data) {
-    await uploadFile(GLOBAL_FILE, JSON.parse(data));
+  const json = localStorage.getItem("JSON_GLOBAL") || "{}";
+
+  const { error } = await supabase.storage
+    .from("snapshots")
+    .upload(GLOBAL_FILE, json, {
+      upsert: true,
+      contentType: "application/json"
+    });
+
+  if (error) {
+    console.error("ERROR al subir GLOBAL:", error);
+  } else {
+    console.log("GLOBAL guardado en Supabase");
   }
 }
 
-// ======================================================
-//  GUARDAR UNA EMPRESA ESPECÍFICA
-// ======================================================
+// ===========================
+// Guardar EMPRESA
+// ===========================
 export async function saveCompanyToSupabase(companyId) {
-  const key = "empresa_" + companyId;
-  const data = localStorage.getItem(key);
+  const key = `${COMPANY_PREFIX}${companyId}`;
 
-  if (data) {
-    await uploadFile(key, JSON.parse(data));
+  const json = localStorage.getItem(key);
+  if (!json) return;
+
+  const { error } = await supabase.storage
+    .from("snapshots")
+    .upload(`${key}.json`, json, {
+      upsert: true,
+      contentType: "application/json"
+    });
+
+  if (error) {
+    console.error("ERROR al subir empresa:", error);
+  } else {
+    console.log(`Empresa ${companyId} guardada en Supabase`);
   }
 }
 
-// ======================================================
-//  AUTO-SYNC CADA VEZ QUE EL USUARIO CAMBIE LOCALSTORAGE
-// ======================================================
+// ===========================
+// Eliminar empresa de Supabase
+// ===========================
+export async function deleteCompanyFromSupabase(companyId) {
+  const file = `${COMPANY_PREFIX}${companyId}.json`;
+
+  await supabase.storage
+    .from("snapshots")
+    .remove([file]);
+
+  console.log(`Empresa ${companyId} eliminada en Supabase`);
+}
+
+// ===========================
+// AUTO-SYNC CADA 5 SEGUNDOS
+// ===========================
 export function startAutoSync() {
-  console.log("AutoSync activado…");
+  console.log("Auto-sync activado…");
 
-  window.addEventListener("storage", async (event) => {
-    if (!event.key) return;
+  setInterval(async () => {
+    // Sync GLOBAL
+    await saveGlobalJsonToSupabase();
 
-    // Guardar GLOBAL_JSON
-    if (event.key === "GLOBAL_JSON") {
-      await saveGlobalJsonToSupabase();
-    }
+    // Sync todas las empresas
+    Object.keys(localStorage)
+      .filter(k => k.startsWith(COMPANY_PREFIX))
+      .forEach(async (key) => {
+        const companyId = key.replace(COMPANY_PREFIX, "");
+        await saveCompanyToSupabase(companyId);
+      });
 
-    // Guardar empresa específica
-    if (event.key.startsWith("empresa_")) {
-      const id = event.key.replace("empresa_", "");
-      await saveCompanyToSupabase(id);
-    }
-  });
+  }, 5000);
 }
