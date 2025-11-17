@@ -1,120 +1,66 @@
 // =======================
-// SYNC LOCALSTORAGE <-> SUPABASE
+// SYNC LOCALSTORAGE <-> POSTGRES
 // =======================
-
 import {
-  saveSnapshotGlobal,
-  saveSnapshotEmpresa,
   loadSnapshotGlobal,
-  loadSnapshotEmpresa
+  saveSnapshotGlobal,
+  loadSnapshotEmpresa,
+  saveSnapshotEmpresa,
+  deleteSnapshotEmpresa
 } from './lib/snapshots';
 
 // =======================
-// CARGA INICIAL DESDE SUPABASE
+// CARGA INICIAL DESDE POSTGRES
 // =======================
 export async function loadLocalStorageFromSupabase() {
-  console.log("⏬ Cargando datos desde Supabase...");
+  console.log('⏬ Cargando datos desde Supabase...');
 
   try {
-    // ----- GLOBAL -----
+    // GLOBAL
     const globalData = await loadSnapshotGlobal();
-    if (globalData) {
-      localStorage.setItem('JSON_GLOBAL', JSON.stringify(globalData));
-    } else {
-      console.warn('⚠ No se encontró JSON_GLOBAL, se crea vacío');
-      localStorage.setItem('JSON_GLOBAL', JSON.stringify({}));
-    }
+    localStorage.setItem('JSON_GLOBAL', JSON.stringify(globalData || {}));
 
-    // ----- EMPRESAS -----
+    // EMPRESAS
     if (globalData?.empresas && Array.isArray(globalData.empresas)) {
       for (const empresa of globalData.empresas) {
-        const empresaData = await loadSnapshotEmpresa(empresa.id);
-        if (empresaData) {
-          localStorage.setItem(`empresa_${empresa.id}`, JSON.stringify(empresaData));
-        } else {
-          console.warn(`⚠ No se encontró empresa_${empresa.id}, se crea vacío`);
-          localStorage.setItem(`empresa_${empresa.id}`, JSON.stringify({}));
-        }
+        const data = await loadSnapshotEmpresa(empresa.id);
+        localStorage.setItem(`empresa_${empresa.id}`, JSON.stringify(data || {}));
       }
     }
 
-    console.log('✔ LocalStorage sincronizado desde Supabase');
+    console.log('✔ LocalStorage sincronizado desde PostgreSQL');
   } catch (e) {
     console.error('❌ Error cargando snapshots desde Supabase:', e);
   }
 }
 
 // =======================
-// DETECTAR CAMBIOS EN LOCALSTORAGE
-// =======================
-function getLocalStorageSnapshot() {
-  const snapshot = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key === 'JSON_GLOBAL' || key.startsWith('empresa_')) {
-      snapshot[key] = localStorage.getItem(key);
-    }
-  }
-  return snapshot;
-}
-
-// =======================
-// AUTO-SYNC COMPLETO
+// AUTO-SYNC CADA 3 SEGUNDOS
 // =======================
 export function startAutoSync() {
-  console.log("🔄 AutoSync ACTIVADO (cada 3s)");
+  console.log('🔄 AutoSync ACTIVADO');
 
-  let lastSnapshot = getLocalStorageSnapshot();
-  const SYNC_INTERVAL = 3000; // 3 segundos
+  const SYNC_INTERVAL = 3000;
 
   setInterval(async () => {
     try {
-      const currentSnapshot = getLocalStorageSnapshot();
-
-      // 🔹 GLOBAL
-      const globalPrev = lastSnapshot['JSON_GLOBAL'];
-      const globalCurr = currentSnapshot['JSON_GLOBAL'];
-      if (globalCurr && globalCurr !== globalPrev) {
-        await saveSnapshotGlobal(JSON.parse(globalCurr));
-        console.log('✔ Global sincronizado automáticamente');
+      // GLOBAL
+      const globalStr = localStorage.getItem('JSON_GLOBAL');
+      if (globalStr) {
+        await saveSnapshotGlobal(JSON.parse(globalStr));
       }
 
-      // 🔹 EMPRESAS
-      for (const key in currentSnapshot) {
+      // EMPRESAS
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
         if (key.startsWith('empresa_')) {
-          const prev = lastSnapshot[key];
-          const curr = currentSnapshot[key];
           const empresaId = key.replace('empresa_', '');
-
-          if (!prev && curr) {
-            // Nueva empresa
-            await saveSnapshotEmpresa(empresaId, JSON.parse(curr));
-            console.log(`✔ Nueva empresa ${empresaId} creada en Supabase`);
-          } else if (prev !== curr) {
-            // Empresa existente modificada
-            await saveSnapshotEmpresa(empresaId, JSON.parse(curr));
-            console.log(`✔ Empresa ${empresaId} sincronizada automáticamente`);
-          }
+          const dataStr = localStorage.getItem(key);
+          if (dataStr) await saveSnapshotEmpresa(empresaId, JSON.parse(dataStr));
         }
       }
-
-      // 🔹 ELIMINACIONES
-      for (const key in lastSnapshot) {
-        if (key.startsWith('empresa_') && !currentSnapshot[key]) {
-          const empresaId = key.replace('empresa_', '');
-          try {
-            await saveSnapshotEmpresa(empresaId, null); // pasar null para eliminar
-            console.log(`✔ Empresa ${empresaId} eliminada en Supabase`);
-          } catch (e) {
-            console.warn(`⚠ Error eliminando empresa ${empresaId}:`, e);
-          }
-        }
-      }
-
-      // Actualizar snapshot de referencia
-      lastSnapshot = currentSnapshot;
     } catch (e) {
-      console.error('❌ Error en auto-sync:', e);
+      console.error('❌ Error en AutoSync:', e);
     }
   }, SYNC_INTERVAL);
 }

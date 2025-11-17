@@ -1,49 +1,69 @@
-// ===============================
-//  SNAPSHOTS JSON (GLOBAL/EMPRESAS)
-// ===============================
+// =======================
+// LIB/SNAPSHOTS.JS
+// =======================
+import { createClient } from '@supabase/supabase-js';
 
-// Guarda el JSON GLOBAL
-export async function saveSnapshotGlobal(globalData) {
-  return await fetch("/api/saveSnapshot", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      filename: "JSON_GLOBAL.json",
-      data: globalData
-    })
-  });
-}
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Guarda el JSON por EMPRESA
-export async function saveSnapshotEmpresa(empresaId, empresaData) {
-  return await fetch("/api/saveSnapshot", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      filename: `empresa_${empresaId}.json`,
-      data: empresaData
-    })
-  });
-}
-
-// Cargar cualquier JSON
-export async function loadSnapshot(filename) {
-  const res = await fetch(`/api/getSnapshot?filename=${filename}`);
-  return await res.json();
-}
-
-// Cargar global
+// =======================
+// GLOBAL SNAPSHOT
+// =======================
 export async function loadSnapshotGlobal() {
-  return loadSnapshot("JSON_GLOBAL.json");
+  const { data, error } = await supabase
+    .from('snapshots_global')
+    .select('data')
+    .single();
+
+  if (error) {
+    console.warn('⚠ No se pudo cargar snapshot global:', error.message);
+    return null;
+  }
+  return data?.data || {};
 }
 
-// Cargar por empresa
+export async function saveSnapshotGlobal(globalData) {
+  const { error } = await supabase
+    .from('snapshots_global')
+    .upsert({ id: 1, data: globalData }, { onConflict: 'id' });
+
+  if (error) console.error('❌ Error guardando snapshot global:', error.message);
+  else console.log('✔ Snapshot global guardado');
+}
+
+// =======================
+// EMPRESAS SNAPSHOT
+// =======================
 export async function loadSnapshotEmpresa(empresaId) {
-  return loadSnapshot(`empresa_${empresaId}.json`);
+  const { data, error } = await supabase
+    .from('snapshots_empresas')
+    .select('data')
+    .eq('empresa_id', empresaId)
+    .single();
+
+  if (error) {
+    console.warn(`⚠ No se pudo cargar empresa ${empresaId}:`, error.message);
+    return null;
+  }
+  return data?.data || {};
 }
 
-// Listar todos los snapshots que existen
-export async function listSnapshots() {
-  const res = await fetch(`/api/listSnapshots`);
-  return await res.json();
+export async function saveSnapshotEmpresa(empresaId, empresaData) {
+  const { error } = await supabase
+    .from('snapshots_empresas')
+    .upsert({ empresa_id: empresaId, data: empresaData }, { onConflict: 'empresa_id' });
+
+  if (error) console.error(`❌ Error guardando empresa ${empresaId}:`, error.message);
+  else console.log(`✔ Empresa ${empresaId} guardada`);
+}
+
+export async function deleteSnapshotEmpresa(empresaId) {
+  const { error } = await supabase
+    .from('snapshots_empresas')
+    .delete()
+    .eq('empresa_id', empresaId);
+
+  if (error) console.error(`❌ Error eliminando empresa ${empresaId}:`, error.message);
+  else console.log(`✔ Empresa ${empresaId} eliminada`);
 }

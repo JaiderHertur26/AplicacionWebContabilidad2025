@@ -2,7 +2,6 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from '@/App';
 import '@/index.css';
-
 import { loadLocalStorageFromSupabase, startAutoSync } from './syncLocalStorage.js';
 
 (async () => {
@@ -19,7 +18,7 @@ import { loadLocalStorageFromSupabase, startAutoSync } from './syncLocalStorage.
         <App />
       </React.StrictMode>
     );
-  } catch (error) {
-    console.error('❌ Error al iniciar la app:', error);
+  } catch (err) {
+    console.error('❌ Error iniciando app:', err);
   }
 })();
