@@ -1,26 +1,18 @@
 // =======================
-// SYNC LOCALSTORAGE <-> POSTGRES
+// SYNC LOCALSTORAGE
 // =======================
-import {
-  loadSnapshotGlobal,
-  saveSnapshotGlobal,
-  loadSnapshotEmpresa,
-  saveSnapshotEmpresa,
-  deleteSnapshotEmpresa
-} from './lib/snapshots';
+import { loadSnapshotGlobal, saveSnapshotGlobal, loadSnapshotEmpresa, saveSnapshotEmpresa } from './lib/snapshots';
 
 // =======================
-// CARGA INICIAL DESDE POSTGRES
+// CARGA INICIAL
 // =======================
-export async function loadLocalStorageFromSupabase() {
-  console.log('⏬ Cargando datos desde Supabase...');
+export async function loadLocalStorageFromJSON() {
+  console.log('⏬ Cargando datos desde localStorage...');
 
   try {
-    // GLOBAL
     const globalData = await loadSnapshotGlobal();
-    localStorage.setItem('JSON_GLOBAL', JSON.stringify(globalData || {}));
+    localStorage.setItem('JSON_GLOBAL', JSON.stringify(globalData || { empresas: [] }));
 
-    // EMPRESAS
     if (globalData?.empresas && Array.isArray(globalData.empresas)) {
       for (const empresa of globalData.empresas) {
         const data = await loadSnapshotEmpresa(empresa.id);
@@ -28,29 +20,24 @@ export async function loadLocalStorageFromSupabase() {
       }
     }
 
-    console.log('✔ LocalStorage sincronizado desde PostgreSQL');
+    console.log('✔ LocalStorage cargado y sincronizado.');
   } catch (e) {
-    console.error('❌ Error cargando snapshots desde Supabase:', e);
+    console.error('❌ Error cargando snapshots:', e);
   }
 }
 
 // =======================
-// AUTO-SYNC CADA 3 SEGUNDOS
+// AUTO-SYNC cada 3 segundos
 // =======================
 export function startAutoSync() {
-  console.log('🔄 AutoSync ACTIVADO');
-
-  const SYNC_INTERVAL = 3000;
-
+  console.log('🔄 AutoSync ACTIVADO (cada 3s)');
   setInterval(async () => {
     try {
-      // GLOBAL
+      // Global
       const globalStr = localStorage.getItem('JSON_GLOBAL');
-      if (globalStr) {
-        await saveSnapshotGlobal(JSON.parse(globalStr));
-      }
+      if (globalStr) await saveSnapshotGlobal(JSON.parse(globalStr));
 
-      // EMPRESAS
+      // Empresas
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key.startsWith('empresa_')) {
@@ -62,5 +49,5 @@ export function startAutoSync() {
     } catch (e) {
       console.error('❌ Error en AutoSync:', e);
     }
-  }, SYNC_INTERVAL);
+  }, 3000);
 }

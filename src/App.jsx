@@ -1,5 +1,5 @@
 // ===============================
-// APP.JSX con AUTOSYNC COMPLETO PostgreSQL
+// APP.JSX con AUTOSYNC COMPLETO
 // ===============================
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
@@ -24,16 +24,14 @@ import AccountsPayable from '@/pages/AccountsPayable';
 import { Toaster } from '@/components/ui/toaster';
 import { useCompanyData } from '@/hooks/useCompanyData';
 
-import {
-  saveSnapshotGlobal,
-  saveSnapshotEmpresa,
-  loadSnapshotGlobal,
-  loadSnapshotEmpresa
-} from './lib/snapshots';
+import { saveSnapshotGlobal, saveSnapshotEmpresa, loadSnapshotGlobal, loadSnapshotEmpresa } from './lib/snapshots';
 
 const CompanyContext = createContext();
 export const useCompany = () => useContext(CompanyContext);
 
+// ======================================
+// Inicialización automática de cuentas
+// ======================================
 const InitialAccountsSetup = ({ children }) => {
   const { activeCompany } = useCompany();
   const [accounts, saveAccounts, isAccountsLoaded] = useCompanyData('accounts');
@@ -53,6 +51,7 @@ const InitialAccountsSetup = ({ children }) => {
         number: reqAcc.number,
         name: reqAcc.name,
       }));
+
       saveAccounts(newAccounts.sort((a, b) => a.number.localeCompare(b.number)));
     }
   }, [activeCompany, accounts, saveAccounts, isAccountsLoaded]);
@@ -60,6 +59,9 @@ const InitialAccountsSetup = ({ children }) => {
   return isAccountsLoaded || !activeCompany ? children : null;
 };
 
+// ======================================
+// APP PRINCIPAL
+// ======================================
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeCompany, setActiveCompany] = useState(null);
@@ -79,43 +81,49 @@ function App() {
   useEffect(() => { empresaIdRef.current = empresaId; }, [empresaId]);
 
   // ===============================
-  // Cargar sesión
+  // Cargar sesión y empresas existentes
   // ===============================
   useEffect(() => {
     const session = localStorage.getItem('auth_session');
+    const globalStr = localStorage.getItem('JSON_GLOBAL');
+    const globalObj = globalStr ? JSON.parse(globalStr) : { empresas: [] };
+
     if (!session) return;
 
     if (session === 'general_admin') {
       setIsAuthenticated(true);
       setIsGeneralAdmin(true);
+      setCompanies(globalObj.empresas || []);
     } else {
-      setIsAuthenticated(true);
-      setIsGeneralAdmin(false);
-      setActiveCompany({ id: session });
+      const loggedInCompany = globalObj.empresas?.find(c => c.id === session);
+      if (loggedInCompany) {
+        setCompanies(globalObj.empresas || []);
+        setActiveCompany(loggedInCompany);
+        setIsAuthenticated(true);
+      } else {
+        localStorage.removeItem('auth_session');
+      }
     }
   }, []);
 
   // ===============================
-  // Cargar snapshots desde PostgreSQL
+  // Cargar snapshots iniciales
   // ===============================
   useEffect(() => {
-    async function loadSnapshots() {
+    async function load() {
       try {
         const global = await loadSnapshotGlobal();
-        setGlobalData(global || {});
-        const empresasFromGlobal = global?.empresas || [];
-        setCompanies(empresasFromGlobal);
+        setGlobalData(global || { empresas: [] });
 
         if (empresaId) {
           const empresa = await loadSnapshotEmpresa(empresaId);
           setEmpresaData(empresa || {});
         }
       } catch (err) {
-        console.warn('No hay snapshots aún');
+        console.warn("No hay snapshots aún");
       }
     }
-
-    if (isAuthenticated) loadSnapshots();
+    if (isAuthenticated) load();
   }, [isAuthenticated, empresaId]);
 
   // ===============================
@@ -130,13 +138,12 @@ function App() {
           await saveSnapshotGlobal(globalDataRef.current);
           localStorage.setItem('JSON_GLOBAL', JSON.stringify(globalDataRef.current));
         }
-
         if (empresaIdRef.current && empresaDataRef.current) {
           await saveSnapshotEmpresa(empresaIdRef.current, empresaDataRef.current);
           localStorage.setItem(`empresa_${empresaIdRef.current}`, JSON.stringify(empresaDataRef.current));
         }
       } catch (err) {
-        console.error('❌ Error en auto-sync:', err);
+        console.error("❌ Error en auto-sync:", err);
       }
     }, 8000);
 
@@ -156,6 +163,16 @@ function App() {
       setIsGeneralAdmin(false);
       setActiveCompany(loginData.company);
       localStorage.setItem('auth_session', loginData.company.id);
+
+      // Crear empresa automáticamente si no existe
+      const globalStr = localStorage.getItem('JSON_GLOBAL');
+      const globalObj = globalStr ? JSON.parse(globalStr) : { empresas: [] };
+      const exists = globalObj.empresas?.some(c => c.id === loginData.company.id);
+      if (!exists) {
+        globalObj.empresas.push(loginData.company);
+        localStorage.setItem('JSON_GLOBAL', JSON.stringify(globalObj));
+        setCompanies(globalObj.empresas);
+      }
     }
   };
 
@@ -170,17 +187,8 @@ function App() {
     if (!isGeneralAdmin && company.id !== activeCompany?.id) handleLogout();
   };
 
-  const companyContextValue = {
-    activeCompany,
-    selectCompany,
-    companies,
-    setCompanies,
-    isGeneralAdmin,
-  };
+  const companyContextValue = { activeCompany, selectCompany, companies, setCompanies, isGeneralAdmin };
 
-  // ===============================
-  // RENDER APP
-  // ===============================
   const MainApp = () => (
     <Layout onLogout={handleLogout}>
       <InitialAccountsSetup>
@@ -210,7 +218,6 @@ function App() {
       <Helmet>
         <title>JaiderHerTur26 - Sistema de Contabilidad</title>
       </Helmet>
-
       <CompanyContext.Provider value={companyContextValue}>
         <Router>
           <Toaster />
