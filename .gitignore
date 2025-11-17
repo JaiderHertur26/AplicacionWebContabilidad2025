@@ -16,3 +16,4 @@ dist/
 # Sistemas
 .DS_Store
 Thumbs.db
+.vercel
