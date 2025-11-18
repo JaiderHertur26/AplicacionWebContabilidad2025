@@ -1,52 +1,49 @@
-// =======================
-// LIB/SNAPSHOTS.JS
-// =======================
+// ===============================
+//  SNAPSHOTS JSON (GLOBAL/EMPRESAS)
+// ===============================
 
-// Guarda y carga snapshots directamente en localStorage
-// Simula un almacenamiento global y por empresa
-
-export async function loadSnapshotGlobal() {
-  const str = localStorage.getItem('JSON_GLOBAL');
-  if (!str) return { empresas: [] };
-  try {
-    return JSON.parse(str);
-  } catch (e) {
-    console.error('❌ Error parseando JSON_GLOBAL:', e);
-    return { empresas: [] };
-  }
-}
-
+// Guarda el JSON GLOBAL
 export async function saveSnapshotGlobal(globalData) {
-  try {
-    localStorage.setItem('JSON_GLOBAL', JSON.stringify(globalData || { empresas: [] }));
-  } catch (e) {
-    console.error('❌ Error guardando JSON_GLOBAL:', e);
-  }
+  return await fetch("/api/saveSnapshot", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      filename: "JSON_GLOBAL.json",
+      data: globalData
+    })
+  });
 }
 
+// Guarda el JSON por EMPRESA
+export async function saveSnapshotEmpresa(empresaId, empresaData) {
+  return await fetch("/api/saveSnapshot", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      filename: `empresa_${empresaId}.json`,
+      data: empresaData
+    })
+  });
+}
+
+// Cargar cualquier JSON
+export async function loadSnapshot(filename) {
+  const res = await fetch(`/api/getSnapshot?filename=${filename}`);
+  return await res.json();
+}
+
+// Cargar global
+export async function loadSnapshotGlobal() {
+  return loadSnapshot("JSON_GLOBAL.json");
+}
+
+// Cargar por empresa
 export async function loadSnapshotEmpresa(empresaId) {
-  const str = localStorage.getItem(`empresa_${empresaId}`);
-  if (!str) return {};
-  try {
-    return JSON.parse(str);
-  } catch (e) {
-    console.error(`❌ Error parseando empresa_${empresaId}:`, e);
-    return {};
-  }
+  return loadSnapshot(`empresa_${empresaId}.json`);
 }
 
-export async function saveSnapshotEmpresa(empresaId, data) {
-  try {
-    localStorage.setItem(`empresa_${empresaId}`, JSON.stringify(data || {}));
-  } catch (e) {
-    console.error(`❌ Error guardando empresa_${empresaId}:`, e);
-  }
-}
-
-export async function deleteSnapshotEmpresa(empresaId) {
-  try {
-    localStorage.removeItem(`empresa_${empresaId}`);
-  } catch (e) {
-    console.error(`❌ Error eliminando empresa_${empresaId}:`, e);
-  }
+// Listar todos los snapshots
+export async function listSnapshots() {
+  const res = await fetch(`/api/listSnapshots`);
+  return await res.json();
 }

@@ -1,17 +1,18 @@
 // ===============================
-// MAIN.JSX
+// MAIN.JSX - CARGA Y AUTOSYNC
 // ===============================
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from '@/App';
 import '@/index.css';
-import { loadLocalStorageFromJSON, startAutoSync } from './syncLocalStorage.js';
+
+import { loadLocalStorageFromSupabase, startAutoSync } from './syncLocalStorage.js';
 
 (async () => {
   try {
-    console.log('⏬ Cargando datos desde localStorage...');
-    await loadLocalStorageFromJSON();
-    console.log('✔ Datos cargados en localStorage.');
+    console.log('⏬ Cargando datos desde Supabase...');
+    await loadLocalStorageFromSupabase();
+    console.log('✔ Datos cargados en LocalStorage.');
 
     console.log('🔄 Iniciando AutoSync...');
     startAutoSync();
@@ -21,7 +22,7 @@ import { loadLocalStorageFromJSON, startAutoSync } from './syncLocalStorage.js';
         <App />
       </React.StrictMode>
     );
-  } catch (err) {
-    console.error('❌ Error iniciando app:', err);
+  } catch (error) {
+    console.error('❌ Error al iniciar la app:', error);
   }
 })();
