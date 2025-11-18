@@ -26,6 +26,17 @@ export async function saveSnapshotEmpresa(empresaId, empresaData) {
   });
 }
 
+// Nuevo — borrar archivo + manifest
+export async function deleteSnapshot(filename) {
+  const res = await fetch('/api/deleteSnapshot', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename })
+  });
+  return res.json();
+}
+
+
 // Cargar cualquier JSON
 export async function loadSnapshot(filename) {
   const res = await fetch(`/api/getSnapshot?filename=${filename}`);

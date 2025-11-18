@@ -1,3 +1,4 @@
+// api/saveSnapshot.js
 import { createClient } from "@supabase/supabase-js";
 
 export default async function handler(req, res) {
@@ -6,8 +7,7 @@ export default async function handler(req, res) {
   }
 
   const { filename, data } = req.body;
-
-  if (!filename || !data) {
+  if (!filename || typeof data === "undefined") {
     return res.status(400).json({ error: "Faltan datos" });
   }
 
@@ -16,19 +16,44 @@ export default async function handler(req, res) {
     process.env.SUPABASE_SERVICE_KEY
   );
 
-  const jsonString = JSON.stringify(data, null, 2);
+  try {
+    const jsonString = JSON.stringify(data, null, 2);
+    const fileBuffer = Buffer.from(jsonString, "utf-8");
 
-  const { error } = await supabase
-    .storage
-    .from(process.env.SUPABASE_BUCKET)
-    .upload(filename, jsonString, {
-      upsert: true,
-      contentType: "application/json",
-    });
+    // Subir/actualizar el archivo en Storage
+    const { error: uploadError } = await supabase
+      .storage
+      .from(process.env.SUPABASE_BUCKET)
+      .upload(filename, fileBuffer, {
+        upsert: true,
+        contentType: "application/json",
+      });
 
-  if (error) {
-    return res.status(500).json({ error: error.message });
+    if (uploadError) {
+      console.error("Upload error:", uploadError);
+      return res.status(500).json({ error: uploadError.message || uploadError });
+    }
+
+    // Upsert en tabla manifest para generar evento Realtime
+    const manifestRow = {
+      id: filename,            // PK: filename (p. ej. "JSON_GLOBAL.json" o "empresa_1.json")
+      filename,
+      updated_at: new Date().toISOString()
+    };
+
+    const { error: upsertError } = await supabase
+      .from("snapshots_manifest")
+      .upsert(manifestRow);
+
+    if (upsertError) {
+      console.error("Manifest upsert error:", upsertError);
+      // No abortamos la operación; devolver 200 pero informar del error en manifest
+      return res.status(200).json({ success: true, manifestError: upsertError.message });
+    }
+
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error("Unexpected error:", err);
+    return res.status(500).json({ error: err.message || err });
   }
-
-  return res.status(200).json({ success: true });
 }

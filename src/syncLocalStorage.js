@@ -1,120 +1,97 @@
-// =======================
-// SYNC LOCALSTORAGE <-> SUPABASE
-// =======================
+// src/syncLocalStorage.js
+import { createClient } from '@supabase/supabase-js';
 
-import {
-  saveSnapshotGlobal,
-  saveSnapshotEmpresa,
-  loadSnapshotGlobal,
-  loadSnapshotEmpresa
-} from './lib/snapshots';
+const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_KEY);
+const BUCKET = import.meta.env.VITE_SUPABASE_BUCKET || 'snapshots';
 
-// =======================
-// CARGA INICIAL DESDE SUPABASE
-// =======================
-export async function loadLocalStorageFromSupabase() {
-  console.log("⏬ Cargando datos desde Supabase...");
-
+async function downloadToLocalStorage(filename) {
   try {
-    // ----- GLOBAL -----
-    const globalData = await loadSnapshotGlobal();
-    if (globalData) {
-      localStorage.setItem('JSON_GLOBAL', JSON.stringify(globalData));
-    } else {
-      console.warn('⚠ No se encontró JSON_GLOBAL, se crea vacío');
-      localStorage.setItem('JSON_GLOBAL', JSON.stringify({}));
+    const { data, error } = await supabase.storage.from(BUCKET).download(filename);
+    if (error) {
+      console.warn(`No se pudo descargar ${filename}:`, error.message || error);
+      return;
     }
+    const text = await data.text();
+    const json = JSON.parse(text);
 
-    // ----- EMPRESAS -----
-    if (globalData?.empresas && Array.isArray(globalData.empresas)) {
-      for (const empresa of globalData.empresas) {
-        const empresaData = await loadSnapshotEmpresa(empresa.id);
-        if (empresaData) {
-          localStorage.setItem(`empresa_${empresa.id}`, JSON.stringify(empresaData));
-        } else {
-          console.warn(`⚠ No se encontró empresa_${empresa.id}, se crea vacío`);
-          localStorage.setItem(`empresa_${empresa.id}`, JSON.stringify({}));
+    // si es JSON_GLOBAL.json
+    if (filename === 'JSON_GLOBAL.json') {
+      localStorage.setItem('JSON_GLOBAL', JSON.stringify(json));
+      // si contiene listado de empresas, opcionalmente descargar cada empresa (ver abajo)
+      if (json && Array.isArray(json.empresas)) {
+        for (const emp of json.empresas) {
+          if (emp && emp.id) {
+            // intenta cargar cada empresa si no está ya cargada
+            await downloadToLocalStorage(`empresa_${emp.id}.json`);
+          }
         }
       }
+      return;
     }
 
-    console.log('✔ LocalStorage sincronizado desde Supabase');
-  } catch (e) {
-    console.error('❌ Error cargando snapshots desde Supabase:', e);
+    // si filename empieza con empresa_
+    if (filename.startsWith('empresa_')) {
+      localStorage.setItem(filename.replace('.json',''), JSON.stringify(json));
+      return;
+    }
+
+    // Default store
+    localStorage.setItem(filename.replace('.json',''), JSON.stringify(json));
+  } catch (err) {
+    console.error('downloadToLocalStorage error:', err);
   }
 }
 
-// =======================
-// DETECTAR CAMBIOS EN LOCALSTORAGE
-// =======================
-function getLocalStorageSnapshot() {
-  const snapshot = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key === 'JSON_GLOBAL' || key.startsWith('empresa_')) {
-      snapshot[key] = localStorage.getItem(key);
+// carga inicial: intenta cargar JSON_GLOBAL y lista de snapshots
+export async function loadLocalStorageFromSupabase() {
+  try {
+    // 1) intentar descargar JSON_GLOBAL
+    await downloadToLocalStorage('JSON_GLOBAL.json');
+
+    // 2) listar manifest y descargar cada archivo (por si hay archivos adicionales)
+    const { data: manifest, error } = await supabase.from('snapshots_manifest').select('id, filename, updated_at');
+    if (error) {
+      console.warn('No se pudo leer snapshots_manifest:', error.message || error);
+      return;
     }
+    for (const row of manifest || []) {
+      await downloadToLocalStorage(row.filename);
+    }
+  } catch (err) {
+    console.error('Error loadLocalStorageFromSupabase:', err);
   }
-  return snapshot;
 }
 
-// =======================
-// AUTO-SYNC COMPLETO
-// =======================
+// iniciar AutoSync (suscripción Realtime)
 export function startAutoSync() {
-  console.log("🔄 AutoSync ACTIVADO (cada 3s)");
-
-  let lastSnapshot = getLocalStorageSnapshot();
-  const SYNC_INTERVAL = 3000; // 3 segundos
-
-  setInterval(async () => {
-    try {
-      const currentSnapshot = getLocalStorageSnapshot();
-
-      // 🔹 GLOBAL
-      const globalPrev = lastSnapshot['JSON_GLOBAL'];
-      const globalCurr = currentSnapshot['JSON_GLOBAL'];
-      if (globalCurr && globalCurr !== globalPrev) {
-        await saveSnapshotGlobal(JSON.parse(globalCurr));
-        console.log('✔ Global sincronizado automáticamente');
-      }
-
-      // 🔹 EMPRESAS
-      for (const key in currentSnapshot) {
-        if (key.startsWith('empresa_')) {
-          const prev = lastSnapshot[key];
-          const curr = currentSnapshot[key];
-          const empresaId = key.replace('empresa_', '');
-
-          if (!prev && curr) {
-            // Nueva empresa
-            await saveSnapshotEmpresa(empresaId, JSON.parse(curr));
-            console.log(`✔ Nueva empresa ${empresaId} creada en Supabase`);
-          } else if (prev !== curr) {
-            // Empresa existente modificada
-            await saveSnapshotEmpresa(empresaId, JSON.parse(curr));
-            console.log(`✔ Empresa ${empresaId} sincronizada automáticamente`);
+  // escuchamos INSERT/UPDATE/DELETE sobre snapshots_manifest
+  const channel = supabase.channel('public:snapshots_manifest')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'snapshots_manifest' },
+      async (payload) => {
+        try {
+          // payload.eventType: INSERT | UPDATE | DELETE
+          const filename = payload.record ? payload.record.filename : (payload.old ? payload.old.filename : null);
+          if (!filename) return;
+          if (payload.eventType === 'DELETE') {
+            // eliminar del localStorage si fue borrado
+            localStorage.removeItem(filename.replace('.json',''));
+            localStorage.removeItem('JSON_GLOBAL'); // para forzar recarga si corresponde
+            return;
           }
+          // INSERT o UPDATE -> descargar archivo actualizado
+          await downloadToLocalStorage(filename);
+        } catch (err) {
+          console.error('Error in realtime handler:', err);
         }
       }
-
-      // 🔹 ELIMINACIONES
-      for (const key in lastSnapshot) {
-        if (key.startsWith('empresa_') && !currentSnapshot[key]) {
-          const empresaId = key.replace('empresa_', '');
-          try {
-            await saveSnapshotEmpresa(empresaId, null); // pasar null para eliminar
-            console.log(`✔ Empresa ${empresaId} eliminada en Supabase`);
-          } catch (e) {
-            console.warn(`⚠ Error eliminando empresa ${empresaId}:`, e);
-          }
-        }
+    )
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        console.log('🔔 Suscripción realtime a snapshots_manifest activa.');
       }
+    });
 
-      // Actualizar snapshot de referencia
-      lastSnapshot = currentSnapshot;
-    } catch (e) {
-      console.error('❌ Error en auto-sync:', e);
-    }
-  }, SYNC_INTERVAL);
+  return channel;
 }
