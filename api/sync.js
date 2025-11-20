@@ -1,27 +1,44 @@
 import { Redis } from "@upstash/redis";
 
-export default async function handler(req, res) {
+export const config = {
+  runtime: "edge",
+};
+
+export default async function handler(req) {
   const redis = new Redis({
     url: process.env.UPSTASH_REDIS_REST_URL,
     token: process.env.UPSTASH_REDIS_REST_TOKEN,
   });
 
-  if (req.method === "POST") {
-    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+  const method = req.method;
 
+  // POST → guardar snapshot
+  if (method === "POST") {
+    const body = await req.json();
     await redis.set("localstorage_snapshot", body);
 
-    return res.status(200).json({
-      ok: true,
-      message: "LocalStorage sincronizado en la nube",
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        message: "LocalStorage sincronizado",
+      }),
+      { status: 200 }
+    );
+  }
+
+  // GET → obtener snapshot
+  if (method === "GET") {
+    const data = await redis.get("localstorage_snapshot");
+
+    return new Response(JSON.stringify(data || {}), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
     });
   }
 
-  if (req.method === "GET") {
-    const data = await redis.get("localstorage_snapshot");
-    return res.status(200).json(data || {});
-  }
-
-  res.setHeader("Allow", ["GET", "POST"]);
-  return res.status(405).json({ error: "Método no permitido" });
+  // Método no permitido
+  return new Response(
+    JSON.stringify({ error: "Método no permitido" }),
+    { status: 405 }
+  );
 }
