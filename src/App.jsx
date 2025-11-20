@@ -1,45 +1,44 @@
-import React, { useState, useEffect, createContext, useContext } from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import { Helmet } from "react-helmet";
-import Layout from "@/components/Layout";
-import Dashboard from "@/pages/Dashboard";
-import Transactions from "@/pages/Transactions";
-import Reports from "@/pages/Reports";
-import Contacts from "@/pages/Contacts";
-import Accounts from "@/pages/Accounts";
-import BankAccounts from "@/pages/BankAccounts";
-import BookClosings from "@/pages/BookClosings";
-import Settings from "@/pages/Settings";
-import Login from "@/pages/Login";
-import Companies from "@/pages/Companies";
-import FixedAssets from "@/pages/FixedAssets";
-import RealEstates from "@/pages/RealEstates";
-import TaxReports from "@/pages/TaxReports";
-import AccountsReceivable from "@/pages/AccountsReceivable";
-import AccountsPayable from "@/pages/AccountsPayable";
-import { Toaster } from "@/components/ui/toaster";
-import { useCompanyData } from "@/hooks/useCompanyData";
-import { restoreFromCloud, enableCloudSync } from "./syncLocalStorage";
+import React, { useState, useEffect, createContext, useContext } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Helmet } from 'react-helmet';
+import Layout from '@/components/Layout';
+import Dashboard from '@/pages/Dashboard';
+import Transactions from '@/pages/Transactions';
+import Reports from '@/pages/Reports';
+import Contacts from '@/pages/Contacts';
+import Accounts from '@/pages/Accounts';
+import BankAccounts from '@/pages/BankAccounts';
+import BookClosings from '@/pages/BookClosings';
+import Settings from '@/pages/Settings';
+import Login from '@/pages/Login';
+import Companies from '@/pages/Companies';
+import FixedAssets from '@/pages/FixedAssets';
+import RealEstates from '@/pages/RealEstates';
+import TaxReports from '@/pages/TaxReports';
+import AccountsReceivable from '@/pages/AccountsReceivable';
+import AccountsPayable from '@/pages/AccountsPayable';
+import { Toaster } from '@/components/ui/toaster';
+import { useCompanyData } from '@/hooks/useCompanyData';
 
 const CompanyContext = createContext();
 export const useCompany = () => useContext(CompanyContext);
 
 const InitialAccountsSetup = ({ children }) => {
   const { activeCompany } = useCompany();
-  const [accounts, saveAccounts, isAccountsLoaded] = useCompanyData("accounts");
+  const [accounts, saveAccounts, isAccountsLoaded] = useCompanyData('accounts');
 
   useEffect(() => {
     if (activeCompany && isAccountsLoaded) {
       const requiredAccounts = [
-        { number: "110505", name: "CAJA GENERAL" },
-        { number: "11050501", name: "CAJA PRINCIPAL" },
-        { number: "1120", name: "CUENTAS DE AHORRO" },
-        { number: "13050505", name: "CUENTAS POR COBRAR" },
-        { number: "23", name: "CUENTAS POR PAGAR" },
+        { number: '110505', name: 'CAJA GENERAL' },
+        { number: '11050501', name: 'CAJA PRINCIPAL' },
+        { number: '1120', name: 'CUENTAS DE AHORRO' },
+        { number: '13050505', name: 'CUENTAS POR COBRAR' },
+        { number: '23', name: 'CUENTAS POR PAGAR' }
       ];
 
       if (accounts.length === 0) {
-        const newAccounts = requiredAccounts.map((reqAcc) => ({
+        const newAccounts = requiredAccounts.map(reqAcc => ({
           id: `${Date.now()}-${reqAcc.number}`,
           number: reqAcc.number,
           name: reqAcc.name,
@@ -60,7 +59,46 @@ function App() {
 
   // ⚡ Restaurar snapshot desde la nube al iniciar
   useEffect(() => {
-    restoreFromCloud().finally(() => enableCloudSync());
+    const restoreCloudSnapshot = async () => {
+      try {
+        const res = await fetch("/api/sync");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        for (const key in data) {
+          localStorage.setItem(key, data[key]);
+        }
+
+        console.log("☁ LocalStorage restaurado desde la nube");
+      } catch (e) {
+        console.error("❌ No se pudo restaurar snapshot desde la nube:", e);
+      }
+    };
+
+    restoreCloudSnapshot();
+  }, []);
+
+  // ⚡ Restaurar sesión si existe en sessionStorage
+  useEffect(() => {
+    const session = sessionStorage.getItem('auth_session');
+    if (session) {
+      const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
+      if (session === 'general_admin') {
+        setIsAuthenticated(true);
+        setIsGeneralAdmin(true);
+        setCompanies(storedCompanies);
+      } else {
+        const loggedInCompany = storedCompanies.find(c => c.id === session);
+        if (loggedInCompany) {
+          setIsAuthenticated(true);
+          setActiveCompany(loggedInCompany);
+          setIsGeneralAdmin(false);
+          setCompanies(storedCompanies);
+        } else {
+          sessionStorage.removeItem('auth_session');
+        }
+      }
+    }
   }, []);
 
   const handleLogin = (loginData) => {
@@ -68,21 +106,21 @@ function App() {
     if (loginData.isGeneralAdmin) {
       setIsGeneralAdmin(true);
       setActiveCompany(null);
-      sessionStorage.setItem("auth_session", "general_admin");
+      sessionStorage.setItem('auth_session', 'general_admin');
     } else {
       setIsGeneralAdmin(false);
       setActiveCompany(loginData.company);
-      sessionStorage.setItem("auth_session", loginData.company.id);
+      sessionStorage.setItem('auth_session', loginData.company.id);
     }
 
-    localStorage.setItem("companies", JSON.stringify(loginData.allCompanies || []));
+    localStorage.setItem('companies', JSON.stringify(loginData.allCompanies || []));
     setCompanies(loginData.allCompanies || []);
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
     setIsGeneralAdmin(false);
-    sessionStorage.removeItem("auth_session");
+    sessionStorage.removeItem('auth_session');
     setActiveCompany(null);
   };
 
