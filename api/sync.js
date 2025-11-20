@@ -12,21 +12,25 @@ export default async function handler(req) {
 
   const method = req.method;
 
-  // POST → guardar snapshot
+  // POST → Guardar snapshot
   if (method === "POST") {
-    const body = await req.json();
+    let body = {};
+
+    try {
+      body = await req.json();
+    } catch (e) {
+      body = {};
+    }
+
     await redis.set("localstorage_snapshot", body);
 
     return new Response(
-      JSON.stringify({
-        ok: true,
-        message: "LocalStorage sincronizado",
-      }),
-      { status: 200 }
+      JSON.stringify({ ok: true, message: "Sincronizado" }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
     );
   }
 
-  // GET → obtener snapshot
+  // GET → Leer snapshot
   if (method === "GET") {
     const data = await redis.get("localstorage_snapshot");
 
@@ -36,9 +40,8 @@ export default async function handler(req) {
     });
   }
 
-  // Método no permitido
   return new Response(
     JSON.stringify({ error: "Método no permitido" }),
-    { status: 405 }
+    { status: 405, headers: { "Content-Type": "application/json" } }
   );
 }
