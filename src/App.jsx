@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
@@ -26,10 +25,9 @@ export const useCompany = () => useContext(CompanyContext);
 
 const InitialAccountsSetup = ({ children }) => {
   const { activeCompany } = useCompany();
-  const [accounts, saveAccounts, isAccountsLoaded] = useCompanyData('accounts'); // Use isLoaded state
+  const [accounts, saveAccounts, isAccountsLoaded] = useCompanyData('accounts');
 
   useEffect(() => {
-    // Act only when data is loaded and there's an active company
     if (activeCompany && isAccountsLoaded) {
       const requiredAccounts = [
         { number: '110505', name: 'CAJA GENERAL' },
@@ -39,22 +37,19 @@ const InitialAccountsSetup = ({ children }) => {
         { number: '23', name: 'CUENTAS POR PAGAR' }
       ];
 
-      // Only add accounts if the accounts array is completely empty
       if (accounts.length === 0) {
-          const newAccounts = requiredAccounts.map(reqAcc => ({
-            id: `${Date.now()}-${reqAcc.number}`,
-            number: reqAcc.number,
-            name: reqAcc.name,
-          }));
-          saveAccounts(newAccounts.sort((a, b) => a.number.localeCompare(b.number)));
+        const newAccounts = requiredAccounts.map(reqAcc => ({
+          id: `${Date.now()}-${reqAcc.number}`,
+          number: reqAcc.number,
+          name: reqAcc.name,
+        }));
+        saveAccounts(newAccounts.sort((a, b) => a.number.localeCompare(b.number)));
       }
     }
   }, [activeCompany, accounts, saveAccounts, isAccountsLoaded]);
 
-  // Render children immediately if accounts are loaded or if no company is active
   return isAccountsLoaded || !activeCompany ? children : null;
 };
-
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -62,39 +57,24 @@ function App() {
   const [companies, setCompanies] = useState([]);
   const [isGeneralAdmin, setIsGeneralAdmin] = useState(false);
 
+  // 🔹 Limpiar sesión al abrir la app
   useEffect(() => {
-    const session = localStorage.getItem('auth_session');
-    if (session) {
-      if (session === 'general_admin') {
-        setIsAuthenticated(true);
-        setIsGeneralAdmin(true);
-        const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
-        setCompanies(storedCompanies);
-      } else {
-        const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
-        const loggedInCompany = storedCompanies.find(c => c.id === session);
-        if (loggedInCompany) {
-          setCompanies(storedCompanies);
-          setActiveCompany(loggedInCompany);
-          setIsAuthenticated(true);
-          setIsGeneralAdmin(false);
-        } else {
-          localStorage.removeItem('auth_session');
-        }
-      }
-    }
+    localStorage.removeItem('auth_session');
+    setIsAuthenticated(false);
+    setIsGeneralAdmin(false);
+    setActiveCompany(null);
   }, []);
 
   const handleLogin = (loginData) => {
     setIsAuthenticated(true);
     if (loginData.isGeneralAdmin) {
-        setIsGeneralAdmin(true);
-        setActiveCompany(null);
-        localStorage.setItem('auth_session', 'general_admin');
+      setIsGeneralAdmin(true);
+      setActiveCompany(null);
+      localStorage.setItem('auth_session', 'general_admin');
     } else {
-        setIsGeneralAdmin(false);
-        setActiveCompany(loginData.company);
-        localStorage.setItem('auth_session', loginData.company.id);
+      setIsGeneralAdmin(false);
+      setActiveCompany(loginData.company);
+      localStorage.setItem('auth_session', loginData.company.id);
     }
     const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
     setCompanies(storedCompanies);
@@ -110,7 +90,7 @@ function App() {
   const selectCompany = (company) => {
     if (isGeneralAdmin) return;
     if (company.id !== activeCompany?.id) {
-       handleLogout();
+      handleLogout();
     }
   };
   
