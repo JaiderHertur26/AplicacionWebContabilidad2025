@@ -57,12 +57,27 @@ function App() {
   const [companies, setCompanies] = useState([]);
   const [isGeneralAdmin, setIsGeneralAdmin] = useState(false);
 
-  // 🔹 Limpiar sesión al abrir la app
+  // ⚡ Restaurar sesión si existe en sessionStorage
   useEffect(() => {
-    localStorage.removeItem('auth_session');
-    setIsAuthenticated(false);
-    setIsGeneralAdmin(false);
-    setActiveCompany(null);
+    const session = sessionStorage.getItem('auth_session');
+    if (session) {
+      const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
+      if (session === 'general_admin') {
+        setIsAuthenticated(true);
+        setIsGeneralAdmin(true);
+        setCompanies(storedCompanies);
+      } else {
+        const loggedInCompany = storedCompanies.find(c => c.id === session);
+        if (loggedInCompany) {
+          setIsAuthenticated(true);
+          setActiveCompany(loggedInCompany);
+          setIsGeneralAdmin(false);
+          setCompanies(storedCompanies);
+        } else {
+          sessionStorage.removeItem('auth_session'); // sesión inválida
+        }
+      }
+    }
   }, []);
 
   const handleLogin = (loginData) => {
@@ -70,20 +85,22 @@ function App() {
     if (loginData.isGeneralAdmin) {
       setIsGeneralAdmin(true);
       setActiveCompany(null);
-      localStorage.setItem('auth_session', 'general_admin');
+      sessionStorage.setItem('auth_session', 'general_admin');
     } else {
       setIsGeneralAdmin(false);
       setActiveCompany(loginData.company);
-      localStorage.setItem('auth_session', loginData.company.id);
+      sessionStorage.setItem('auth_session', loginData.company.id);
     }
-    const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
-    setCompanies(storedCompanies);
+
+    // Guardar empresas en localStorage para persistencia
+    localStorage.setItem('companies', JSON.stringify(loginData.allCompanies || []));
+    setCompanies(loginData.allCompanies || []);
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
     setIsGeneralAdmin(false);
-    localStorage.removeItem('auth_session');
+    sessionStorage.removeItem('auth_session');
     setActiveCompany(null);
   };
 
@@ -93,7 +110,7 @@ function App() {
       handleLogout();
     }
   };
-  
+
   const companyContextValue = {
     activeCompany,
     selectCompany,
@@ -121,7 +138,7 @@ function App() {
           <Route path="/book-closings" element={!isGeneralAdmin ? <BookClosings /> : <Navigate to="/companies" />} />
           <Route path="/accounts-receivable" element={!isGeneralAdmin ? <AccountsReceivable /> : <Navigate to="/companies" />} />
           <Route path="/accounts-payable" element={!isGeneralAdmin ? <AccountsPayable /> : <Navigate to="/companies" />} />
-          
+
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </InitialAccountsSetup>
