@@ -22,7 +22,8 @@ export default async function handler(req) {
       body = {};
     }
 
-    await redis.set("localstorage_snapshot", body);
+    // Edge solo acepta strings
+    await redis.set("localstorage_snapshot", JSON.stringify(body));
 
     return new Response(
       JSON.stringify({ ok: true, message: "Sincronizado" }),
@@ -32,9 +33,10 @@ export default async function handler(req) {
 
   // GET → Leer snapshot
   if (method === "GET") {
-    const data = await redis.get("localstorage_snapshot");
+    const raw = await redis.get("localstorage_snapshot");
+    const data = raw ? JSON.parse(raw) : {};
 
-    return new Response(JSON.stringify(data || {}), {
+    return new Response(JSON.stringify(data), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });

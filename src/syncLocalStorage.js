@@ -1,29 +1,36 @@
-// Hook que intercepta localStorage.setItem y sincroniza automáticamente con la nube
+// Intercepta localStorage.setItem y sincroniza automáticamente con la nube
+let syncTimeout = null;
 
 export function enableCloudSync() {
   const originalSetItem = localStorage.setItem;
 
-  localStorage.setItem = async function (key, value) {
+  localStorage.setItem = function (key, value) {
     // Guardar localmente como siempre
     originalSetItem.call(localStorage, key, value);
 
-    // Enviar el snapshot completo al backend
-    const snapshot = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      snapshot[k] = localStorage.getItem(k);
-    }
+    // Agrupar eventos y sincronizar solo una vez cada 500ms
+    if (syncTimeout) clearTimeout(syncTimeout);
 
-    try {
-      await fetch("/api/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(snapshot),
-      });
+    syncTimeout = setTimeout(async () => {
+      const snapshot = {};
 
-      console.log(`☁ Sincronizado en la nube por cambio en: ${key}`);
-    } catch (e) {
-      console.error("❌ Error sincronizando en la nube:", e);
-    }
+      // Construir snapshot completo
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        snapshot[k] = localStorage.getItem(k);
+      }
+
+      try {
+        await fetch("/api/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(snapshot),
+        });
+
+        console.log(`☁ Datos sincronizados en la nube (último cambio: ${key})`);
+      } catch (e) {
+        console.error("❌ Error sincronizando en la nube:", e);
+      }
+    }, 500);
   };
 }
