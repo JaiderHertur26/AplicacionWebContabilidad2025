@@ -1,57 +1,60 @@
-// syncLocalStorage.js — COMPLETO Y FUNCIONAL
+// syncLocalStorage.js
 
 // =============================
-// 1. ENVIAR localStorage → Upstash
-// =============================
-export async function saveLocalStorageToServer() {
-  try {
-    const data = { ...localStorage }; // Convertir todo localStorage en JSON
-
-    const response = await fetch("/api/sync", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-
-    return await response.json();
-  } catch (err) {
-    console.error("❌ Error enviando localStorage al servidor:", err);
-  }
-}
-
-
-
-// =============================
-// 2. CARGAR datos desde Upstash → localStorage
+// Cargar snapshot desde servidor
 // =============================
 export async function loadLocalStorageFromServer() {
   try {
-    const response = await fetch("/api/load"); // Este endpoint lo creo abajo
-    const data = await response.json();
+    const res = await fetch("/api/sync");
+    const data = await res.json();
 
-    if (data && data.value) {
-      Object.keys(data.value).forEach((key) => {
-        localStorage.setItem(key, data.value[key]);
+    if (data && typeof data === "object") {
+      Object.keys(data).forEach((k) => {
+        localStorage.setItem(k, data[k]);
       });
+      console.log("☁ LocalStorage restaurado desde la nube");
     }
-
-    return true;
   } catch (err) {
-    console.error("❌ Error cargando datos del servidor:", err);
-    return false;
+    console.warn("⚠ No se pudo restaurar snapshot:", err);
   }
 }
 
+// =============================
+// Guardar localStorage en servidor
+// =============================
+export async function saveLocalStorageToServer() {
+  try {
+    const snapshot = {};
 
+    // Construir snapshot REAL del localStorage
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      snapshot[key] = localStorage.getItem(key);
+    }
+
+    await fetch("/api/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(snapshot),
+    });
+
+    console.log("☁ Snapshot sincronizado");
+  } catch (err) {
+    console.error("❌ Error enviando snapshot:", err);
+  }
+}
 
 // =============================
-// 3. AUTO SYNC cada 10 segundos
+// AutoSync (cada X ms)
 // =============================
-export function startAutoSync() {
-  // Guarda cada 10 segundos
-  setInterval(() => {
+let autoSyncTimer = null;
+
+export function startAutoSync(interval = 10000) {
+  if (autoSyncTimer) clearInterval(autoSyncTimer);
+
+  console.log(`🔄 AutoSync iniciado cada ${interval / 1000} segundos`);
+
+  autoSyncTimer = setInterval(() => {
     saveLocalStorageToServer();
-  }, 10000);
-
-  console.log("🔄 AutoSync iniciado cada 10 segundos");
+  }, interval);
 }
