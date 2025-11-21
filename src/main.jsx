@@ -1,21 +1,13 @@
-// main.jsx
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from '@/App';
-import '@/index.css';
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "@/App";
+import "@/index.css";
 
-import { loadLocalStorageFromServer, startAutoSync } from './syncLocalStorage.js';
+import { loadLocalStorageFromServer, startAutoSync } from "./syncLocalStorage";
 
 (async () => {
-  // 1️⃣ Restaurar lo que está en Upstash
   await loadLocalStorageFromServer();
-
-  // 2️⃣ Iniciar auto sincronización
-  startAutoSync(10000); // 10 segundos
+  startAutoSync(10000);
 })();
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);

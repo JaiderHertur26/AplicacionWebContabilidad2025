@@ -1,9 +1,7 @@
-// /api/sync.js  (ruta en Vercel)
+// /api/sync.js
 import { Redis } from "@upstash/redis";
 
-export const config = {
-  runtime: "edge",
-};
+export const config = { runtime: "edge" };
 
 export default async function handler(req) {
   try {
@@ -14,9 +12,7 @@ export default async function handler(req) {
 
     const method = req.method;
 
-    // -------------------------
     // POST → Guardar snapshot
-    // -------------------------
     if (method === "POST") {
       let body = {};
 
@@ -26,12 +22,12 @@ export default async function handler(req) {
         body = {};
       }
 
-      // ❗ No guardar snapshots vacíos
+      // ❗ PROTECCIÓN CRÍTICA
       if (!body || Object.keys(body).length === 0) {
         return new Response(
           JSON.stringify({
             ok: false,
-            warning: "Snapshot vacío — NO se guardó en Upstash",
+            error: "Snapshot vacío — NO se guardó (protección anti borrado)"
           }),
           { status: 400, headers: { "Content-Type": "application/json" } }
         );
@@ -40,32 +36,20 @@ export default async function handler(req) {
       await redis.set("localstorage_snapshot", JSON.stringify(body));
 
       return new Response(
-        JSON.stringify({ ok: true, message: "Snapshot guardado", saved: body }),
+        JSON.stringify({ ok: true, message: "Snapshot guardado" }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    // -------------------------
-    // GET → Obtener snapshot
-    // -------------------------
+    // GET → Leer snapshot
     if (method === "GET") {
-      let raw = null;
+      const raw = await redis.get("localstorage_snapshot");
       let data = {};
 
       try {
-        raw = await redis.get("localstorage_snapshot");
-
-        if (raw) {
-          try {
-            data = JSON.parse(raw);
-          } catch (e) {
-            // Si está corrupto → limpiar
-            await redis.del("localstorage_snapshot");
-            data = {};
-          }
-        }
+        data = raw ? JSON.parse(raw) : {};
       } catch {
-        data = {};
+        data = {}; // si está corrupto, no dañamos localStorage
       }
 
       return new Response(JSON.stringify(data), {
@@ -79,13 +63,10 @@ export default async function handler(req) {
       { status: 405, headers: { "Content-Type": "application/json" } }
     );
 
-  } catch (err) {
-    return new Response(
-      JSON.stringify({
-        error: "Error interno en /api/sync",
-        details: err.message,
-      }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+  } catch (e) {
+    return new Response(JSON.stringify({ error: e.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }

@@ -2,17 +2,25 @@
 
 let lastSnapshot = null;
 
-// --------------------------
-// 1️⃣ Cargar snapshot del servidor
-// --------------------------
+function isValidSnapshot(data) {
+  if (!data) return false;
+  if (Object.keys(data).length === 0) return false;
+
+  // ❗ Si tienes claves obligatorias como "empresas", verifica aquí
+  if (!data["empresas"]) return false;
+
+  return true;
+}
+
+// Cargar snapshot
 export async function loadLocalStorageFromServer() {
   try {
     const res = await fetch("/api/sync");
     const data = await res.json();
 
-    // Evitar restaurar snapshots vacíos
-    if (!data || Object.keys(data).length === 0) {
-      console.log("⚠ Snapshot vacío — NO restaurado");
+    // ❗ NO restaurar datos vacíos o dañados
+    if (!isValidSnapshot(data)) {
+      console.log("⚠ Snapshot remoto vacío — LOCAL NO se toca");
       return;
     }
 
@@ -23,16 +31,15 @@ export async function loadLocalStorageFromServer() {
     lastSnapshot = JSON.stringify(data);
 
     console.log("☁ LocalStorage restaurado desde la nube");
+
   } catch (e) {
-    console.warn("⚠ No se pudo cargar snapshot desde la nube:", e);
+    console.warn("⚠ No se pudo restaurar snapshot:", e);
   }
 }
 
-// --------------------------
-// 2️⃣ Empezar sincronización automática
-// --------------------------
+// AutoSync seguro
 export function startAutoSync(interval = 10000) {
-  console.log("🔄 AutoSync iniciado cada", interval / 1000, "segundos");
+  console.log("🔄 AutoSync seguro cada", interval / 1000, "seg");
 
   setInterval(async () => {
     const snapshot = {};
@@ -42,18 +49,15 @@ export function startAutoSync(interval = 10000) {
       snapshot[key] = localStorage.getItem(key);
     }
 
-    // No subir snapshot vacío
-    if (!snapshot || Object.keys(snapshot).length === 0) {
-      console.log("⚠ Snapshot vacío — NO enviado al servidor");
+    // ❗ NO enviar si está vacío o sin empresas
+    if (!isValidSnapshot(snapshot)) {
+      console.log("⚠ Snapshot local incompleto — NO enviado");
       return;
     }
 
     const newString = JSON.stringify(snapshot);
 
-    // No subir si es igual al último snapshot
-    if (newString === lastSnapshot) {
-      return;
-    }
+    if (newString === lastSnapshot) return;
 
     try {
       const res = await fetch("/api/sync", {
@@ -62,16 +66,13 @@ export function startAutoSync(interval = 10000) {
         body: newString,
       });
 
-      const json = await res.json();
-
       if (res.ok) {
         lastSnapshot = newString;
         console.log("☁ Snapshot sincronizado");
-      } else {
-        console.warn("⚠ No se guardó en Upstash:", json);
       }
+
     } catch (e) {
-      console.error("❌ Error sincronizando snapshot:", e);
+      console.error("❌ Error sincronizando:", e);
     }
   }, interval);
 }
