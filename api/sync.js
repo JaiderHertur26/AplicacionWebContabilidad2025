@@ -1,75 +1,47 @@
-import { Redis } from "@upstash/redis";
+// api/sync.js — FUNCIONANDO
 
-export const config = {
-  runtime: "edge",
-};
-
-export default async function handler(req) {
+export default async function handler(req, res) {
   try {
-    const redis = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    });
-
-    const method = req.method;
-
-    // POST → Guardar snapshot
-    if (method === "POST") {
-      let body = {};
-
-      try {
-        body = await req.json();
-      } catch {
-        body = {};
-      }
-
-      await redis.set("localstorage_snapshot", JSON.stringify(body));
-
-      return new Response(
-        JSON.stringify({ ok: true, message: "Sincronizado" }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      );
+    // Método permitido
+    if (req.method !== "POST") {
+      return res.status(405).json({ error: "Método no permitido" });
     }
 
-    // GET → Cargar snapshot
-    if (method === "GET") {
-      let raw = null;
-      let data = {};
+    // Variables de entorno (Vercel)
+    const url = process.env.UPSTASH_REDIS_REST_URL;
+    const token = process.env.UPSTASH_REDIS_REST_TOKEN;
 
-      try {
-        raw = await redis.get("localstorage_snapshot");
-
-        if (raw) {
-          try {
-            data = JSON.parse(raw);
-          } catch (e) {
-            // ❗ Si está corrupto → limpiar Upstash
-            await redis.del("localstorage_snapshot");
-            data = {};
-          }
-        }
-      } catch (e) {
-        data = {};
-      }
-
-      return new Response(JSON.stringify(data), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
+    if (!url || !token) {
+      return res.status(500).json({
+        error: "Faltan variables de entorno",
       });
     }
 
-    return new Response(
-      JSON.stringify({ error: "Método no permitido" }),
-      { status: 405, headers: { "Content-Type": "application/json" } }
-    );
+    // El body viene en JSON desde tu app
+    const data = req.body;
+
+    // Guardar en Redis usando REST API nativa
+    const response = await fetch(`${url}/set/localStorage`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+
+    return res.status(200).json({
+      success: true,
+      redis_result: result,
+      saved_data: data,
+    });
 
   } catch (error) {
-    return new Response(
-      JSON.stringify({
-        error: "Error interno en /api/sync",
-        details: error.message,
-      }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+    return res.status(500).json({
+      error: "Error interno",
+      details: error.message,
+    });
   }
 }
