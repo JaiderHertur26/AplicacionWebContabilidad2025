@@ -1,11 +1,13 @@
-// syncLocalStorage.js — COMPLETO Y FUNCIONAL
+// syncLocalStorage.js — COMPLETO CON INTERVALO CONFIGURABLE
+
+let SYNC_INTERVAL = 3000; // ⏱️ 3 segundos (puedes cambiarlo aquí)
 
 // =============================
 // 1. ENVIAR localStorage → Upstash
 // =============================
 export async function saveLocalStorageToServer() {
   try {
-    const data = { ...localStorage }; // Convertir todo localStorage en JSON
+    const data = { ...localStorage };
 
     const response = await fetch("/api/sync", {
       method: "POST",
@@ -26,7 +28,7 @@ export async function saveLocalStorageToServer() {
 // =============================
 export async function loadLocalStorageFromServer() {
   try {
-    const response = await fetch("/api/load"); // Este endpoint lo creo abajo
+    const response = await fetch("/api/load");
     const data = await response.json();
 
     if (data && data.value) {
@@ -45,13 +47,15 @@ export async function loadLocalStorageFromServer() {
 
 
 // =============================
-// 3. AUTO SYNC cada 10 segundos
+// 3. AUTO SYNC cada X segundos
 // =============================
-export function startAutoSync() {
-  // Guarda cada 10 segundos
+export function startAutoSync(intervalMs = null) {
+  // Si el usuario especifica otro intervalo → reemplazar
+  if (intervalMs) SYNC_INTERVAL = intervalMs;
+
   setInterval(() => {
     saveLocalStorageToServer();
-  }, 10000);
+  }, SYNC_INTERVAL);
 
-  console.log("🔄 AutoSync iniciado cada 10 segundos");
+  console.log(`🔄 AutoSync iniciado cada ${SYNC_INTERVAL / 1000} segundos`);
 }
