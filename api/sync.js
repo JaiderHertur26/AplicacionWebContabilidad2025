@@ -1,4 +1,4 @@
-// /api/sync.js
+// /api/sync.js  (ruta en Vercel)
 import { Redis } from "@upstash/redis";
 
 export const config = {
@@ -14,9 +14,9 @@ export default async function handler(req) {
 
     const method = req.method;
 
-    // ============================================
-    // POST → Guardar snapshot completo
-    // ============================================
+    // -------------------------
+    // POST → Guardar snapshot
+    // -------------------------
     if (method === "POST") {
       let body = {};
 
@@ -26,58 +26,64 @@ export default async function handler(req) {
         body = {};
       }
 
+      // ❗ No guardar snapshots vacíos
+      if (!body || Object.keys(body).length === 0) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            warning: "Snapshot vacío — NO se guardó en Upstash",
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
       await redis.set("localstorage_snapshot", JSON.stringify(body));
 
       return new Response(
-        JSON.stringify({
-          success: true,
-          message: "Snapshot sincronizado",
-          saved_data: body,
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }
+        JSON.stringify({ ok: true, message: "Snapshot guardado", saved: body }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    // ============================================
-    // GET → Recuperar snapshot existente
-    // ============================================
+    // -------------------------
+    // GET → Obtener snapshot
+    // -------------------------
     if (method === "GET") {
-      let raw = await redis.get("localstorage_snapshot");
+      let raw = null;
+      let data = {};
 
-      if (!raw) {
-        return new Response("{}", {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
-      // Si está corrupto → limpiar Upstash
       try {
-        raw = JSON.parse(raw);
+        raw = await redis.get("localstorage_snapshot");
+
+        if (raw) {
+          try {
+            data = JSON.parse(raw);
+          } catch (e) {
+            // Si está corrupto → limpiar
+            await redis.del("localstorage_snapshot");
+            data = {};
+          }
+        }
       } catch {
-        await redis.del("localstorage_snapshot");
-        raw = {};
+        data = {};
       }
 
-      return new Response(JSON.stringify(raw), {
+      return new Response(JSON.stringify(data), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    // Métodos no permitidos
     return new Response(
       JSON.stringify({ error: "Método no permitido" }),
-      { status: 405 }
+      { status: 405, headers: { "Content-Type": "application/json" } }
     );
-  } catch (error) {
+
+  } catch (err) {
     return new Response(
       JSON.stringify({
-        error: "Error interno",
-        details: error.message,
+        error: "Error interno en /api/sync",
+        details: err.message,
       }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
