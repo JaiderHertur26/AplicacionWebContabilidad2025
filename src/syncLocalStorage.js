@@ -1,78 +1,105 @@
-// syncLocalStorage.js
+// syncLocalStorage.js — sincronización segura con Upstash
 
 let lastSnapshot = null;
+let autoSyncTimer = null;
+
+function safeParse(json, fallback = null) {
+  try {
+    return JSON.parse(json);
+  } catch {
+    return fallback;
+  }
+}
 
 function isValidSnapshot(data) {
   if (!data) return false;
+  if (typeof data !== 'object') return false;
   if (Object.keys(data).length === 0) return false;
-
-  // ❗ Si tienes claves obligatorias como "empresas", verifica aquí
-  if (!data["empresas"]) return false;
-
+  if (!data['companies']) return false; // clave obligatoria
   return true;
 }
 
-// Cargar snapshot
+// Cargar snapshot desde el servidor (GET /api/sync)
 export async function loadLocalStorageFromServer() {
   try {
-    const res = await fetch("/api/sync");
-    const data = await res.json();
-
-    // ❗ NO restaurar datos vacíos o dañados
-    if (!isValidSnapshot(data)) {
-      console.log("⚠ Snapshot remoto vacío — LOCAL NO se toca");
+    const res = await fetch('/api/sync');
+    if (!res.ok) {
+      console.warn('No fue posible contactar /api/sync:', res.status);
       return;
     }
 
-    Object.keys(data).forEach((k) => {
+    const data = await res.json();
+
+    if (!isValidSnapshot(data)) {
+      console.log('⚠ Snapshot remoto inválido o vacío — no se restaura');
+      return;
+    }
+
+    Object.keys(data).forEach(k => {
       localStorage.setItem(k, data[k]);
     });
 
     lastSnapshot = JSON.stringify(data);
-
-    console.log("☁ LocalStorage restaurado desde la nube");
-
+    console.log('☁ LocalStorage restaurado desde la nube');
   } catch (e) {
-    console.warn("⚠ No se pudo restaurar snapshot:", e);
+    console.error('Error al cargar snapshot desde servidor:', e);
   }
 }
 
-// AutoSync seguro
+// Construir snapshot real desde localStorage
+function buildSnapshot() {
+  const snapshot = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    snapshot[key] = localStorage.getItem(key);
+  }
+  return snapshot;
+}
+
+// Enviar snapshot al servidor (POST /api/sync)
+async function postSnapshot(snapshot) {
+  try {
+    const res = await fetch('/api/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(snapshot),
+    });
+
+    const json = await res.json();
+    return { ok: res.ok, json };
+  } catch (e) {
+    console.error('Error al enviar snapshot:', e);
+    return { ok: false, json: null };
+  }
+}
+
+// Iniciar auto sync con protecciones
 export function startAutoSync(interval = 10000) {
-  console.log("🔄 AutoSync seguro cada", interval / 1000, "seg");
+  if (autoSyncTimer) clearInterval(autoSyncTimer);
 
-  setInterval(async () => {
-    const snapshot = {};
+  console.log('🔄 AutoSync iniciado cada', interval / 1000, 'segundos');
 
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      snapshot[key] = localStorage.getItem(key);
-    }
+  autoSyncTimer = setInterval(async () => {
+    const snapshot = buildSnapshot();
 
-    // ❗ NO enviar si está vacío o sin empresas
+    // No enviar si snapshot vacío o inválido (evitar borrados)
     if (!isValidSnapshot(snapshot)) {
-      console.log("⚠ Snapshot local incompleto — NO enviado");
+      console.log('⚠ Snapshot local inválido o vacío — NO enviado');
       return;
     }
 
-    const newString = JSON.stringify(snapshot);
+    const snapshotStr = JSON.stringify(snapshot);
 
-    if (newString === lastSnapshot) return;
+    // Evitar envíos idénticos
+    if (snapshotStr === lastSnapshot) return;
 
-    try {
-      const res = await fetch("/api/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: newString,
-      });
+    const { ok, json } = await postSnapshot(snapshot);
 
-      if (res.ok) {
-        lastSnapshot = newString;
-        console.log("☁ Snapshot sincronizado");
-      }
-
-    } catch (e) {
-      console.error("❌ Error sincronizando:", e);
+    if (ok) {
+      lastSnapshot = snapshotStr;
+      console.log('☁ Snapshot sincronizado');
+    } else {
+      console.warn('⚠ Falló guardar snapshot en servidor:', json);
     }
   }, interval);
 }

@@ -51,55 +51,63 @@ const InitialAccountsSetup = ({ children }) => {
   return isAccountsLoaded || !activeCompany ? children : null;
 };
 
+function safeParse(json, fallback = []) {
+  try {
+    return JSON.parse(json);
+  } catch {
+    return fallback;
+  }
+}
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeCompany, setActiveCompany] = useState(null);
   const [companies, setCompanies] = useState([]);
   const [isGeneralAdmin, setIsGeneralAdmin] = useState(false);
 
-  // ⚡ Restaurar snapshot desde la nube al iniciar
+  // Cargar companies desde localStorage al montar (no sobrescribe la nube)
   useEffect(() => {
-    const restoreCloudSnapshot = async () => {
-      try {
-        const res = await fetch("/api/sync");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+    const stored = safeParse(localStorage.getItem('companies'), []);
+    setCompanies(stored);
 
-        for (const key in data) {
-          localStorage.setItem(key, data[key]);
-        }
-
-        console.log("☁ LocalStorage restaurado desde la nube");
-      } catch (e) {
-        console.error("❌ No se pudo restaurar snapshot desde la nube:", e);
-      }
-    };
-
-    restoreCloudSnapshot();
-  }, []);
-
-  // ⚡ Restaurar sesión si existe en sessionStorage
-  useEffect(() => {
+    // Restaurar activeCompany si existe sesión
     const session = sessionStorage.getItem('auth_session');
     if (session) {
-      const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
       if (session === 'general_admin') {
         setIsAuthenticated(true);
         setIsGeneralAdmin(true);
-        setCompanies(storedCompanies);
+        setActiveCompany(null);
       } else {
-        const loggedInCompany = storedCompanies.find(c => c.id === session);
-        if (loggedInCompany) {
+        const found = stored.find(c => c.id === session);
+        if (found) {
           setIsAuthenticated(true);
-          setActiveCompany(loggedInCompany);
-          setIsGeneralAdmin(false);
-          setCompanies(storedCompanies);
+          setActiveCompany(found);
         } else {
           sessionStorage.removeItem('auth_session');
         }
       }
     }
   }, []);
+
+  // Escuchar cambios en localStorage (otros navegadores/pestañas)
+  useEffect(() => {
+    function onStorage(e) {
+      if (e.key === 'companies') {
+        const newCompanies = safeParse(e.newValue, []);
+        setCompanies(newCompanies);
+
+        // Si la empresa activa fue borrada, cerrar sesión
+        if (activeCompany && !newCompanies.find(c => c.id === activeCompany.id)) {
+          setActiveCompany(null);
+          setIsAuthenticated(false);
+          sessionStorage.removeItem('auth_session');
+        }
+      }
+    }
+
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [activeCompany]);
 
   const handleLogin = (loginData) => {
     setIsAuthenticated(true);
@@ -113,8 +121,10 @@ function App() {
       sessionStorage.setItem('auth_session', loginData.company.id);
     }
 
-    localStorage.setItem('companies', JSON.stringify(loginData.allCompanies || []));
-    setCompanies(loginData.allCompanies || []);
+    // Guardar companies en localStorage de forma segura
+    const toSave = loginData.allCompanies || [];
+    localStorage.setItem('companies', JSON.stringify(toSave));
+    setCompanies(toSave);
   };
 
   const handleLogout = () => {
@@ -127,16 +137,31 @@ function App() {
   const selectCompany = (company) => {
     if (isGeneralAdmin) return;
     if (company.id !== activeCompany?.id) {
-      handleLogout();
+      // Para cambiar de empresa, se mantiene sesión: actualizamos activeCompany
+      setActiveCompany(company);
+      sessionStorage.setItem('auth_session', company.id);
     }
+  };
+
+  const addCompany = (company) => {
+    const current = safeParse(localStorage.getItem('companies'), []);
+    const newList = [...current, company];
+    localStorage.setItem('companies', JSON.stringify(newList));
+    setCompanies(newList);
+  };
+
+  const updateCompanies = (newList) => {
+    localStorage.setItem('companies', JSON.stringify(newList));
+    setCompanies(newList);
   };
 
   const companyContextValue = {
     activeCompany,
     selectCompany,
     companies,
-    setCompanies,
+    setCompanies: updateCompanies,
     isGeneralAdmin,
+    addCompany,
   };
 
   const MainApp = () => (
