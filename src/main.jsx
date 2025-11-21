@@ -1,17 +1,16 @@
-// main.jsx
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from '@/App';
 import '@/index.css';
 
-import { loadLocalStorageFromServer, startAutoSync } from './syncLocalStorage.js';
+import { restoreFromCloud, startAutoSync } from "./syncLocalStorage";
 
-(async () => {
-  // Restaurar snapshot desde la nube de forma segura
-  await loadLocalStorageFromServer();
+(async function () {
+  // 1. Restaurar desde la nube con blindaje
+  await restoreFromCloud();
 
-  // Iniciar sincronización automática (protegida)
-  startAutoSync(10000); // puedes cambiar el intervalo aquí
+  // 2. Iniciar sincronización automática
+  startAutoSync();
 })();
 
 ReactDOM.createRoot(document.getElementById('root')).render(

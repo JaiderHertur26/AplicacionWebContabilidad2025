@@ -12,7 +12,9 @@ export default async function handler(req) {
 
     const method = req.method;
 
-    // POST → Guardar snapshot
+    // ============================================
+    // 📌 POST → Guardar snapshot (BLINDADO)
+    // ============================================
     if (method === "POST") {
       let body = {};
 
@@ -22,26 +24,41 @@ export default async function handler(req) {
         body = {};
       }
 
-      // ❗ PROTECCIÓN CRÍTICA
-      if (!body || Object.keys(body).length === 0) {
+      // ❗ BLINDAJE: no permitir guardar snapshots vacíos
+      if (
+        !body ||
+        !body.companies ||
+        !Array.isArray(body.companies) ||
+        body.companies.length === 0
+      ) {
         return new Response(
           JSON.stringify({
             ok: false,
-            error: "Snapshot vacío — NO se guardó (protección anti borrado)"
+            error:
+              "Blindaje: No se guardó — snapshot vacío o sin 'companies'.",
           }),
           { status: 400, headers: { "Content-Type": "application/json" } }
         );
       }
 
-      await redis.set("localstorage_snapshot", JSON.stringify(body));
+      // Guardar snapshot seguro
+      await redis.set(
+        "localstorage_snapshot",
+        JSON.stringify({ companies: body.companies })
+      );
 
       return new Response(
-        JSON.stringify({ ok: true, message: "Snapshot guardado" }),
+        JSON.stringify({
+          ok: true,
+          message: "Snapshot guardado correctamente",
+        }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    // GET → Leer snapshot
+    // ============================================
+    // 📌 GET → Leer snapshot
+    // ============================================
     if (method === "GET") {
       const raw = await redis.get("localstorage_snapshot");
       let data = {};
@@ -49,7 +66,7 @@ export default async function handler(req) {
       try {
         data = raw ? JSON.parse(raw) : {};
       } catch {
-        data = {}; // si está corrupto, no dañamos localStorage
+        data = {}; // BLINDAJE: si está corrupto → no romper cliente
       }
 
       return new Response(JSON.stringify(data), {
@@ -58,15 +75,21 @@ export default async function handler(req) {
       });
     }
 
+    // ============================================
+    // 📌 Otros métodos NO permitidos
+    // ============================================
     return new Response(
       JSON.stringify({ error: "Método no permitido" }),
       { status: 405, headers: { "Content-Type": "application/json" } }
     );
 
   } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: e.message }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 }

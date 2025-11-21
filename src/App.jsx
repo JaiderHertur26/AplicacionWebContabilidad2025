@@ -51,37 +51,29 @@ const InitialAccountsSetup = ({ children }) => {
   return isAccountsLoaded || !activeCompany ? children : null;
 };
 
-function safeParse(json, fallback = []) {
-  try {
-    return JSON.parse(json);
-  } catch {
-    return fallback;
-  }
-}
-
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeCompany, setActiveCompany] = useState(null);
   const [companies, setCompanies] = useState([]);
   const [isGeneralAdmin, setIsGeneralAdmin] = useState(false);
 
-  // Cargar companies desde localStorage al montar (no sobrescribe la nube)
+  // Restaurar sesión desde sessionStorage
   useEffect(() => {
-    const stored = safeParse(localStorage.getItem('companies'), []);
-    setCompanies(stored);
-
-    // Restaurar activeCompany si existe sesión
     const session = sessionStorage.getItem('auth_session');
     if (session) {
+      const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
+
       if (session === 'general_admin') {
         setIsAuthenticated(true);
         setIsGeneralAdmin(true);
-        setActiveCompany(null);
+        setCompanies(storedCompanies);
       } else {
-        const found = stored.find(c => c.id === session);
-        if (found) {
+        const loggedInCompany = storedCompanies.find(c => c.id === session);
+        if (loggedInCompany) {
           setIsAuthenticated(true);
-          setActiveCompany(found);
+          setActiveCompany(loggedInCompany);
+          setIsGeneralAdmin(false);
+          setCompanies(storedCompanies);
         } else {
           sessionStorage.removeItem('auth_session');
         }
@@ -89,28 +81,9 @@ function App() {
     }
   }, []);
 
-  // Escuchar cambios en localStorage (otros navegadores/pestañas)
-  useEffect(() => {
-    function onStorage(e) {
-      if (e.key === 'companies') {
-        const newCompanies = safeParse(e.newValue, []);
-        setCompanies(newCompanies);
-
-        // Si la empresa activa fue borrada, cerrar sesión
-        if (activeCompany && !newCompanies.find(c => c.id === activeCompany.id)) {
-          setActiveCompany(null);
-          setIsAuthenticated(false);
-          sessionStorage.removeItem('auth_session');
-        }
-      }
-    }
-
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, [activeCompany]);
-
   const handleLogin = (loginData) => {
     setIsAuthenticated(true);
+
     if (loginData.isGeneralAdmin) {
       setIsGeneralAdmin(true);
       setActiveCompany(null);
@@ -121,10 +94,8 @@ function App() {
       sessionStorage.setItem('auth_session', loginData.company.id);
     }
 
-    // Guardar companies en localStorage de forma segura
-    const toSave = loginData.allCompanies || [];
-    localStorage.setItem('companies', JSON.stringify(toSave));
-    setCompanies(toSave);
+    localStorage.setItem('companies', JSON.stringify(loginData.allCompanies || []));
+    setCompanies(loginData.allCompanies || []);
   };
 
   const handleLogout = () => {
@@ -137,31 +108,16 @@ function App() {
   const selectCompany = (company) => {
     if (isGeneralAdmin) return;
     if (company.id !== activeCompany?.id) {
-      // Para cambiar de empresa, se mantiene sesión: actualizamos activeCompany
-      setActiveCompany(company);
-      sessionStorage.setItem('auth_session', company.id);
+      handleLogout();
     }
-  };
-
-  const addCompany = (company) => {
-    const current = safeParse(localStorage.getItem('companies'), []);
-    const newList = [...current, company];
-    localStorage.setItem('companies', JSON.stringify(newList));
-    setCompanies(newList);
-  };
-
-  const updateCompanies = (newList) => {
-    localStorage.setItem('companies', JSON.stringify(newList));
-    setCompanies(newList);
   };
 
   const companyContextValue = {
     activeCompany,
     selectCompany,
     companies,
-    setCompanies: updateCompanies,
+    setCompanies,
     isGeneralAdmin,
-    addCompany,
   };
 
   const MainApp = () => (
@@ -194,8 +150,9 @@ function App() {
     <>
       <Helmet>
         <title>JaiderHerTur26 - Sistema de Contabilidad</title>
-        <meta name="description" content="Gestiona tu contabilidad de forma profesional con JaiderHerTur26." />
+        <meta name="description" content="Gestión contable profesional" />
       </Helmet>
+
       <CompanyContext.Provider value={companyContextValue}>
         <Router>
           <Toaster />
