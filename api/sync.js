@@ -1,19 +1,11 @@
 import { Redis } from "@upstash/redis";
 
-export const config = { runtime: "edge" };
+export const config = {
+  runtime: "edge",
+};
 
 export default async function handler(req) {
   try {
-    // Validar credenciales
-    if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-      return new Response(
-        JSON.stringify({
-          error: "Faltan credenciales de Upstash en las variables de entorno"
-        }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
     const redis = new Redis({
       url: process.env.UPSTASH_REDIS_REST_URL,
       token: process.env.UPSTASH_REDIS_REST_TOKEN,
@@ -21,9 +13,7 @@ export default async function handler(req) {
 
     const method = req.method;
 
-    // -----------------------------
     // POST → Guardar snapshot
-    // -----------------------------
     if (method === "POST") {
       let body = {};
 
@@ -33,7 +23,6 @@ export default async function handler(req) {
         body = {};
       }
 
-      // Edge solo acepta strings
       await redis.set("localstorage_snapshot", JSON.stringify(body));
 
       return new Response(
@@ -42,12 +31,26 @@ export default async function handler(req) {
       );
     }
 
-    // -----------------------------
     // GET → Cargar snapshot
-    // -----------------------------
     if (method === "GET") {
-      const raw = await redis.get("localstorage_snapshot").catch(() => null);
-      const data = raw ? JSON.parse(raw) : {};
+      let raw = null;
+      let data = {};
+
+      try {
+        raw = await redis.get("localstorage_snapshot");
+
+        if (raw) {
+          try {
+            data = JSON.parse(raw);
+          } catch (e) {
+            // ❗ Si está corrupto → limpiar Upstash
+            await redis.del("localstorage_snapshot");
+            data = {};
+          }
+        }
+      } catch (e) {
+        data = {};
+      }
 
       return new Response(JSON.stringify(data), {
         status: 200,
@@ -55,20 +58,16 @@ export default async function handler(req) {
       });
     }
 
-    // -----------------------------
-    // Método no permitido
-    // -----------------------------
     return new Response(
       JSON.stringify({ error: "Método no permitido" }),
       { status: 405, headers: { "Content-Type": "application/json" } }
     );
 
-  } catch (err) {
-    // Manejo global de errores
+  } catch (error) {
     return new Response(
       JSON.stringify({
         error: "Error interno en /api/sync",
-        details: err.message
+        details: error.message,
       }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
