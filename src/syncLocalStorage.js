@@ -1,62 +1,57 @@
-let syncTimeout = null;
+// syncLocalStorage.js — COMPLETO Y FUNCIONAL
 
-// Claves que NO deben subirse a la nube (lista segura)
-const BLOCKLIST = [
-  "__VERCEL_INSIGHTS__", 
-  "vercel", 
-  "chrome-extension", 
-  "undefined", 
-  null
-];
+// =============================
+// 1. ENVIAR localStorage → Upstash
+// =============================
+export async function saveLocalStorageToServer() {
+  try {
+    const data = { ...localStorage }; // Convertir todo localStorage en JSON
 
-// Sanitizar los valores antes de enviarlos a la nube
-function safeValue(value) {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "object") return JSON.stringify(value);
-  if (typeof value === "number" && isNaN(value)) return "";
-  return String(value);
+    const response = await fetch("/api/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+
+    return await response.json();
+  } catch (err) {
+    console.error("❌ Error enviando localStorage al servidor:", err);
+  }
 }
 
-export function enableCloudSync() {
-  const originalSetItem = localStorage.setItem;
 
-  localStorage.setItem = function (key, value) {
-    // Guardar localmente como siempre
-    originalSetItem.call(localStorage, key, value);
 
-    // Evitar claves peligrosas
-    if (!key || BLOCKLIST.some(b => key.includes(b))) return;
+// =============================
+// 2. CARGAR datos desde Upstash → localStorage
+// =============================
+export async function loadLocalStorageFromServer() {
+  try {
+    const response = await fetch("/api/load"); // Este endpoint lo creo abajo
+    const data = await response.json();
 
-    // Agrupar eventos y sincronizar solo una vez cada 500ms
-    if (syncTimeout) clearTimeout(syncTimeout);
+    if (data && data.value) {
+      Object.keys(data.value).forEach((key) => {
+        localStorage.setItem(key, data.value[key]);
+      });
+    }
 
-    syncTimeout = setTimeout(async () => {
-      const snapshot = {};
+    return true;
+  } catch (err) {
+    console.error("❌ Error cargando datos del servidor:", err);
+    return false;
+  }
+}
 
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
 
-        // Saltar claves peligrosas o inválidas
-        if (!k || BLOCKLIST.some(b => k.includes(b))) continue;
 
-        const v = localStorage.getItem(k);
+// =============================
+// 3. AUTO SYNC cada 10 segundos
+// =============================
+export function startAutoSync() {
+  // Guarda cada 10 segundos
+  setInterval(() => {
+    saveLocalStorageToServer();
+  }, 10000);
 
-        // Sanear valores antes de subirlos
-        snapshot[k] = safeValue(v);
-      }
-
-      try {
-        const res = await fetch("/api/sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(snapshot),
-        });
-
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        console.log(`☁ Datos sincronizados en la nube (último cambio: ${key})`);
-      } catch (e) {
-        console.error("❌ Error sincronizando en la nube:", e);
-      }
-    }, 500);
-  };
+  console.log("🔄 AutoSync iniciado cada 10 segundos");
 }

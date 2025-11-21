@@ -1,39 +1,17 @@
-// main.jsx
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from '@/App';
 import '@/index.css';
 
-import { enableCloudSync } from './syncLocalStorage';
+import { loadLocalStorageFromServer, startAutoSync } from './syncLocalStorage.js';
 
-// -------------------------------------------------
-// 1. Activar sincronización automática con la nube
-// -------------------------------------------------
-enableCloudSync();
+(async () => {
+  await loadLocalStorageFromServer(); // 1️⃣ carga lo que está en Upstash
+  startAutoSync();                    // 2️⃣ empieza a sincronizar
+})();
 
-// -------------------------------------------------
-// 2. Restaurar LocalStorage desde Upstash antes de cargar la app
-// -------------------------------------------------
-async function restoreSnapshot() {
-  try {
-    const res = await fetch('/api/sync');
-    const data = await res.json();
-
-    if (data) {
-      Object.keys(data).forEach((k) => {
-        localStorage.setItem(k, data[k]);
-      });
-
-      console.log('☁ LocalStorage restaurado desde la nube');
-    }
-  } catch (e) {
-    console.warn('⚠ No se pudo restaurar snapshot desde la nube:', e);
-  }
-}
-
-// Restaurar datos y luego montar la app
-restoreSnapshot().then(() => {
-  ReactDOM.createRoot(document.getElementById('root')).render(
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
     <App />
-  );
-});
+  </React.StrictMode>,
+);
