@@ -22,7 +22,9 @@ import { Toaster } from '@/components/ui/toaster';
 import { useCompanyData } from '@/hooks/useCompanyData';
 import { CompanyContext, useCompany } from '@/contexts/CompanyContext';
 
-// Re-export useCompany for backward compatibility with other components
+// 🔥 IMPORTANTE: sincronización local <-> nube
+import { bootstrapIfNeeded, syncFromServer } from "@/lib/localSync";
+
 export { useCompany };
 
 const InitialAccountsSetup = ({ children }) => {
@@ -40,12 +42,12 @@ const InitialAccountsSetup = ({ children }) => {
       ];
 
       if (accounts.length === 0) {
-          const newAccounts = requiredAccounts.map(reqAcc => ({
-            id: `${Date.now()}-${reqAcc.number}`,
-            number: reqAcc.number,
-            name: reqAcc.name,
-          }));
-          saveAccounts(newAccounts.sort((a, b) => a.number.localeCompare(b.number)));
+        const newAccounts = requiredAccounts.map(reqAcc => ({
+          id: `${Date.now()}-${reqAcc.number}`,
+          number: reqAcc.number,
+          name: reqAcc.name,
+        }));
+        saveAccounts(newAccounts.sort((a, b) => a.number.localeCompare(b.number)));
       }
     }
   }, [activeCompany, accounts, saveAccounts, isAccountsLoaded]);
@@ -62,6 +64,19 @@ function App() {
   const [accessLevel, setAccessLevel] = useState('full'); 
   const [isConsolidated, setIsConsolidated] = useState(false);
 
+  // 🔥 PRIMERA CARGA → obtener nube → almacenar localStorage
+  useEffect(() => {
+    bootstrapIfNeeded();
+
+    // 🔄 sincronización periódica (cada 3 segundos)
+    const interval = setInterval(() => {
+      syncFromServer();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // 🔥 Tu lógica original de autenticación
   useEffect(() => {
     const session = localStorage.getItem('auth_session');
     const storedAccessLevel = localStorage.getItem('auth_access_level') || 'full';
@@ -82,8 +97,7 @@ function App() {
           setIsAuthenticated(true);
           setIsGeneralAdmin(false);
           setAccessLevel(storedAccessLevel);
-          
-          // Load consolidation preference
+
           const storedConsolidation = localStorage.getItem(`${loggedInCompany.id}-consolidate`) === 'true';
           setIsConsolidated(storedConsolidation);
         } else {
@@ -101,17 +115,16 @@ function App() {
     localStorage.setItem('auth_access_level', level);
 
     if (loginData.isGeneralAdmin) {
-        setIsGeneralAdmin(true);
-        setActiveCompany(null);
-        localStorage.setItem('auth_session', 'general_admin');
+      setIsGeneralAdmin(true);
+      setActiveCompany(null);
+      localStorage.setItem('auth_session', 'general_admin');
     } else {
-        setIsGeneralAdmin(false);
-        setActiveCompany(loginData.company);
-        localStorage.setItem('auth_session', loginData.company.id);
-        
-        // Reset consolidation on new login
-        setIsConsolidated(false);
-        localStorage.removeItem(`${loginData.company.id}-consolidate`);
+      setIsGeneralAdmin(false);
+      setActiveCompany(loginData.company);
+      localStorage.setItem('auth_session', loginData.company.id);
+
+      setIsConsolidated(false);
+      localStorage.removeItem(`${loginData.company.id}-consolidate`);
     }
     const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
     setCompanies(storedCompanies);
@@ -150,9 +163,7 @@ function App() {
           <Route path="/" element={isGeneralAdmin ? <Navigate to="/companies" /> : <Dashboard />} />
           <Route path="/companies" element={<Companies />} />
           <Route path="/settings" element={<Settings />} />
-          
           <Route path="/organization" element={!isGeneralAdmin ? <Organization /> : <Navigate to="/companies" />} />
-
           <Route path="/transactions" element={!isGeneralAdmin ? <Transactions /> : <Navigate to="/companies" />} />
           <Route path="/bank-accounts" element={!isGeneralAdmin ? <BankAccounts /> : <Navigate to="/companies" />} />
           <Route path="/fixed-assets" element={!isGeneralAdmin ? <FixedAssets /> : <Navigate to="/companies" />} />
@@ -164,7 +175,6 @@ function App() {
           <Route path="/book-closings" element={!isGeneralAdmin ? <BookClosings /> : <Navigate to="/companies" />} />
           <Route path="/accounts-receivable" element={!isGeneralAdmin ? <AccountsReceivable /> : <Navigate to="/companies" />} />
           <Route path="/accounts-payable" element={!isGeneralAdmin ? <AccountsPayable /> : <Navigate to="/companies" />} />
-          
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </InitialAccountsSetup>

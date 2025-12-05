@@ -1,0 +1,90 @@
+Listado de rutas de carpetas
+El n£mero de serie del volumen es 000000F6 EEB6:FCD0
+C:\APLICACIàNWEBCONTABILIDAD2025\SRC
+³   App.jsx
+³   index.css
+³   main.jsx
+³   snapshots.js
+³   syncLocalStorage.js
+³   
+ÃÄÄÄcomponents
+³   ³   CallToAction.jsx
+³   ³   HeroImage.jsx
+³   ³   Layout.jsx
+³   ³   WelcomeMessage.jsx
+³   ³   
+³   ÃÄÄÄadmin
+³   ÃÄÄÄdashboard
+³   ³       RecentTransactions.jsx
+³   ³       StatCard.jsx
+³   ³       
+³   ÃÄÄÄinvoices
+³   ³       InvoiceDialog.jsx
+³   ³       
+³   ÃÄÄÄtransactions
+³   ³       InternalTransferDialog.jsx
+³   ³       TrackingSheetVoucher.jsx
+³   ³       TransactionDialog.jsx
+³   ³       Voucher.jsx
+³   ³       
+³   ÀÄÄÄui
+³           alert-dialog.jsx
+³           button.jsx
+³           checkbox.jsx
+³           combobox.jsx
+³           command.jsx
+³           dialog.jsx
+³           label.jsx
+³           popover.jsx
+³           select.jsx
+³           switch.jsx
+³           tabs.jsx
+³           toast.jsx
+³           toaster.jsx
+³           use-toast.js
+³           
+ÃÄÄÄcontexts
+³       CompanyContext.jsx
+³       SupabaseAuthContext.jsx
+³       
+ÃÄÄÄhooks
+³       useCompanyData.js
+³       usePermission.js
+³       
+ÃÄÄÄlib
+³       auth-utils.js
+³       customSupabaseClient.js
+³       excel.js
+³       localSync.js
+³       numberToWords.js
+³       redis.js
+³       utils.js
+³       
+ÃÄÄÄpages
+³   ³   Accounts.jsx
+³   ³   AccountsPayable.jsx
+³   ³   AccountsReceivable.jsx
+³   ³   BankAccounts.jsx
+³   ³   BookClosings.jsx
+³   ³   Companies.jsx
+³   ³   Contacts.jsx
+³   ³   Dashboard.jsx
+³   ³   FixedAssets.jsx
+³   ³   Invoices.jsx
+³   ³   Login.jsx
+³   ³   Organization.jsx
+³   ³   RealEstates.jsx
+³   ³   Reports.jsx
+³   ³   Settings.jsx
+³   ³   TaxReports.jsx
+³   ³   Transactions.jsx
+³   ³   _app.js
+³   ³   
+³   ÃÄÄÄadmin
+³   ÀÄÄÄapi
+³           bootstrap.js
+³           compact.js
+³           push-change.js
+³           sync.js
+³           
+ÀÄÄÄutils

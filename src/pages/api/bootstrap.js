@@ -1,13 +1,16 @@
-// /pages/api/bootstrap.js
-import { redis } from "../../lib/redis";
-
-const SNAP_KEY = "snapshot_v1";
+// /src/pages/api/bootstrap.js
+import { redis } from "@/lib/redis";
 
 export default async function handler(req, res) {
   try {
-    const snap = await redis.get(SNAP_KEY);
-    res.status(200).json({ data: snap || {} });
+    let state = await redis.get("APP_STATE");
+    if (!state) state = {};
+
+    res.status(200).json({
+      ok: true,
+      data: state
+    });
   } catch (e) {
-    res.status(500).json({ error: "bootstrap_error" });
+    res.status(500).json({ ok: false, error: e.message });
   }
 }
