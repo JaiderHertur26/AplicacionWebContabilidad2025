@@ -1,5 +1,5 @@
 Listado de rutas de carpetas
-El n£mero de serie del volumen es 000000F6 EEB6:FCD0
+El n£mero de serie del volumen es 00000048 EEB6:FCD0
 C:\APLICACIàNWEBCONTABILIDAD2025\SRC
 ³   App.jsx
 ³   index.css
@@ -80,11 +80,5 @@ C:\APLICACIàNWEBCONTABILIDAD2025\SRC
 ³   ³   Transactions.jsx
 ³   ³   _app.js
 ³   ³   
-³   ÃÄÄÄadmin
-³   ÀÄÄÄapi
-³           bootstrap.js
-³           compact.js
-³           push-change.js
-³           sync.js
-³           
+³   ÀÄÄÄadmin
 ÀÄÄÄutils
