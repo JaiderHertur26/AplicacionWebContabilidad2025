@@ -1,78 +1,117 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCompany } from '@/contexts/CompanyContext';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { useCompany } from '@/App';
+export function useCompanyData(key) {
+  const { activeCompany, companies, isConsolidated } = useCompany();
+  const [data, setData] = useState([]);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const mounted = useRef(true);
 
-export function useCompanyData(storageKey) {
-    const { activeCompany } = useCompany();
-    const [data, setData] = useState([]);
-    const [isLoaded, setIsLoaded] = useState(false); // New loading state
-    const isMounted = useRef(false);
-    
-    const companyStorageKey = activeCompany ? `${activeCompany.id}-${storageKey}` : null;
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
-    useEffect(() => {
-        isMounted.current = true;
-        setIsLoaded(false); // Reset on key change
-
-        if (companyStorageKey) {
-            try {
-                const stored = localStorage.getItem(companyStorageKey);
-                if (isMounted.current) {
-                    setData(stored ? JSON.parse(stored) : []);
-                }
-            } catch (error) {
-                console.error(`Error parsing ${companyStorageKey} from localStorage`, error);
-                if (isMounted.current) {
-                    setData([]);
-                }
-            } finally {
-                if(isMounted.current) {
-                    setIsLoaded(true); // Mark as loaded
-                }
-            }
-        } else {
-            if (isMounted.current) {
-                setData([]);
-                setIsLoaded(true); // Also loaded if no key
-            }
+  const loadData = useCallback(() => {
+    if (!activeCompany) {
+        if (mounted.current) {
+            setData([]);
+            setIsLoaded(true);
         }
-        return () => {
-            isMounted.current = false;
-        };
-    }, [companyStorageKey]);
+        return;
+    }
 
-    const saveData = useCallback((newData, options = {}) => {
-        if (companyStorageKey) {
-            localStorage.setItem(companyStorageKey, JSON.stringify(newData));
-            if (isMounted.current && !options.silent) {
-                setData(newData);
-            }
-            // Dispatch event for other components to listen to storage changes
-            window.dispatchEvent(new CustomEvent('storage-updated', { detail: { key: companyStorageKey }}));
-        }
-    }, [companyStorageKey]);
+    let loadedData = [];
 
-    // Listener for external storage changes (like restore)
-    useEffect(() => {
-        const handleStorageUpdate = (event) => {
-            if (event.detail.key === companyStorageKey) {
+    // Check consolidation from CONTEXT
+    if (isConsolidated && companies.length > 0) {
+        // Filter: Active Company (Parent) + All companies that have this company as parent
+        const relevantCompanies = companies.filter(c => 
+            c.id === activeCompany.id || c.parentId === activeCompany.id
+        );
+        
+        // Deduplicate companies just in case
+        const uniqueCompanies = Array.from(new Map(relevantCompanies.map(c => [c.id, c])).values());
+
+        uniqueCompanies.forEach(comp => {
+            const storageKey = `${comp.id}-${key}`;
+            const stored = localStorage.getItem(storageKey);
+            if (stored) {
                 try {
-                    const stored = localStorage.getItem(companyStorageKey);
-                    if (isMounted.current) {
-                        setData(stored ? JSON.parse(stored) : []);
+                    const parsed = JSON.parse(stored);
+                    if (Array.isArray(parsed)) {
+                        // Tag data with source company for reference
+                        const tagged = parsed.map(item => ({ 
+                            ...item, 
+                            _companyId: comp.id, 
+                            _companyName: comp.name,
+                            _isConsolidated: comp.id !== activeCompany.id
+                        }));
+                        loadedData = [...loadedData, ...tagged];
                     }
-                } catch (error) {
-                    console.error(`Error reloading ${companyStorageKey} from localStorage`, error);
-                }
+                } catch (e) { console.error(e); }
             }
-        };
+        });
+    } else {
+        // Standard Single Company Load
+        const storageKey = `${activeCompany.id}-${key}`;
+        const stored = localStorage.getItem(storageKey);
+        if (stored) {
+            try {
+                loadedData = JSON.parse(stored);
+            } catch (e) { loadedData = []; }
+        }
+    }
 
-        window.addEventListener('storage-updated', handleStorageUpdate);
-        return () => {
-            window.removeEventListener('storage-updated', handleStorageUpdate);
-        };
-    }, [companyStorageKey]);
+    if (mounted.current) {
+        // CRITICAL FIX: Deduplicate data by ID to prevent "same key" React errors
+        // But ONLY if items have IDs. Some settings (like initialBalance) might not have IDs.
+        if (Array.isArray(loadedData) && loadedData.length > 0) {
+             const allHaveIds = loadedData.every(item => item && (item.id !== undefined && item.id !== null));
+             
+             if (allHaveIds) {
+                 const uniqueData = Array.from(new Map(loadedData.map(item => [item.id, item])).values());
+                 setData(uniqueData);
+             } else {
+                 // If items lack IDs (like initialBalance), preserve them all (consolidation relies on this)
+                 setData(loadedData);
+             }
+        } else {
+             setData(loadedData || []);
+        }
+        setIsLoaded(true);
+    }
+  }, [activeCompany, companies, key, isConsolidated]);
 
+  useEffect(() => {
+    loadData();
+    
+    const handleStorageUpdate = (e) => {
+        if (e.detail?.key === `${activeCompany?.id}-${key}` ||
+            e.detail?.key === 'all-data-update' ||
+            (isConsolidated && e.detail?.key?.endsWith(`-${key}`))) {
+            loadData();
+        }
+    };
 
-    return [data, saveData, isLoaded]; // Return loading state
+    window.addEventListener('storage-updated', handleStorageUpdate);
+    return () => window.removeEventListener('storage-updated', handleStorageUpdate);
+  }, [loadData, activeCompany, key, isConsolidated]);
+
+  const saveData = (newData) => {
+      if (!activeCompany) return;
+      
+      const storageKey = `${activeCompany.id}-${key}`;
+      localStorage.setItem(storageKey, JSON.stringify(newData));
+      
+      window.dispatchEvent(new CustomEvent('storage-updated', { detail: { key: storageKey } }));
+      
+      if (!isConsolidated && mounted.current) {
+          setData(newData);
+      } else {
+          loadData();
+      }
+  };
+
+  return [data, saveData, isLoaded];
 }

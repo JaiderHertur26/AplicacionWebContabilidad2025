@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
-import { Plus, Download, Edit2, Trash2, Archive, Search, CalendarPlus, Upload } from 'lucide-react';
+import { Plus, Download, Edit2, Trash2, Archive, Search, CalendarPlus, Upload, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogDescription } from '@/components/ui/dialog';
@@ -10,8 +9,10 @@ import { Label } from '@/components/ui/label';
 import { useCompanyData } from '@/hooks/useCompanyData';
 import { exportToExcel } from '@/lib/excel';
 import * as XLSX from 'xlsx';
+import { usePermission } from '@/hooks/usePermission';
 
 const FixedAssets = () => {
+    const { canEdit, canDelete, canAdd, canImport, isReadOnly } = usePermission();
     const [assets, saveAssets] = useCompanyData('fixedAssets');
     const [transactions, saveTransactions] = useCompanyData('transactions');
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -23,14 +24,13 @@ const FixedAssets = () => {
     const { toast } = useToast();
 
     const handleSaveAsset = (assetData) => {
+        if (!canAdd && !editingAsset) return;
+        if (!canEdit && editingAsset) return;
+
         let updatedAssets;
         if (editingAsset) {
             updatedAssets = assets.map(asset => asset.id === editingAsset.id ? { ...asset, ...assetData } : asset);
             toast({ title: "Activo actualizado" });
-
-            // No longer update the linked transaction. Control is now fully in Fixed Assets.
-            // The transaction remains as a historical record of the purchase.
-            
         } else {
             updatedAssets = [...(assets || []), { ...assetData, id: Date.now().toString(), year: yearFilter }];
             toast({ title: "Activo creado manualmente" });
@@ -40,11 +40,32 @@ const FixedAssets = () => {
     };
 
     const handleDeleteAsset = (id) => {
+        if (!canDelete) return;
+
+        const assetToDelete = assets.find(asset => asset.id === id);
+        
+        // Logic to balance the books when deleting an asset created from a transaction
+        if (assetToDelete && assetToDelete.transactionId) {
+             const transactionToUpdate = transactions.find(t => t.id === assetToDelete.transactionId);
+             if (transactionToUpdate) {
+                 // By setting isFixedAsset to false, the transaction becomes a regular expense.
+                 // This reduces Net Profit (Equity) which balances the reduction in Assets.
+                 const updatedTransactions = transactions.map(t => 
+                    t.id === assetToDelete.transactionId 
+                        ? { ...t, isFixedAsset: false } 
+                        : t
+                 );
+                 saveTransactions(updatedTransactions);
+                 toast({ title: "Contabilidad Ajustada", description: "El gasto de compra se ha reclasificado como gasto corriente para cuadrar el balance." });
+             }
+        }
+
         saveAssets(assets.filter(asset => asset.id !== id));
-        toast({ title: "Activo eliminado" });
+        toast({ title: "Activo eliminado", description: "El activo ha sido retirado del inventario." });
     };
 
     const handleCloneYear = () => {
+        if (!canAdd) return;
         const currentYear = new Date().getFullYear();
         if (parseInt(yearFilter) >= currentYear) {
             toast({ variant: 'destructive', title: "Acción no permitida", description: "Solo puedes clonar inventarios de años anteriores al actual." });
@@ -71,6 +92,7 @@ const FixedAssets = () => {
     };
     
     const handleImport = (importedAssets) => {
+        if (!canImport) return;
         const newAssets = importedAssets.map(asset => ({
             ...asset,
             id: Date.now().toString() + Math.random(),
@@ -93,6 +115,7 @@ const FixedAssets = () => {
     }, [assets]);
 
     const handleAddYear = (newYear) => {
+        if (!canAdd) return;
         if (newYear && !availableYears.includes(newYear)) {
             const updatedYears = [...availableYears, newYear].sort((a, b) => b-a);
             setAvailableYears(updatedYears);
@@ -110,17 +133,20 @@ const FixedAssets = () => {
         <div className="space-y-6">
             <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="flex justify-between items-center">
                 <div><h1 className="text-4xl font-bold text-slate-900">Inventario de Activos Fijos</h1></div>
-                <Button onClick={() => { setEditingAsset(null); setDialogOpen(true); }} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-4 h-4 mr-2" /> Nuevo Activo</Button>
+                <div className="flex items-center gap-2">
+                    {isReadOnly && <span className="flex items-center text-slate-400 text-sm"><Lock className="w-4 h-4 mr-1"/>Acceso Parcial</span>}
+                    {canAdd && <Button onClick={() => { setEditingAsset(null); setDialogOpen(true); }} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-4 h-4 mr-2" /> Nuevo Activo</Button>}
+                </div>
             </motion.div>
             
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-xl shadow-lg p-6 border flex flex-wrap gap-4 items-end">
                 <div className="flex-1 min-w-[150px]"><Label>Filtrar por Año:</Label><select value={yearFilter} onChange={e => setYearFilter(e.target.value)} className="w-full mt-1 p-2 border rounded-lg"><option value="" disabled>Selecciona año</option>{availableYears.map(y => <option key={y} value={y}>{y}</option>)}</select></div>
                 <div className="flex-1 min-w-[200px] relative"><Label>Buscar Activo:</Label><Search className="absolute left-3 top-10 transform -translate-y-1/2 text-slate-400 w-5 h-5" /><input type="text" placeholder="Buscar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full mt-1 pl-10 pr-4 py-2 border rounded-lg" /></div>
                 <div className="flex gap-2 flex-wrap">
-                    <Button onClick={() => setNewYearDialogOpen(true)} variant="outline"><CalendarPlus className="w-4 h-4 mr-2"/>Añadir Año</Button>
-                    <Button onClick={() => setImportDialogOpen(true)} variant="outline"><Upload className="w-4 h-4 mr-2" /> Importar</Button>
+                    {canAdd && <Button onClick={() => setNewYearDialogOpen(true)} variant="outline"><CalendarPlus className="w-4 h-4 mr-2"/>Añadir Año</Button>}
+                    {canImport && <Button onClick={() => setImportDialogOpen(true)} variant="outline"><Upload className="w-4 h-4 mr-2" /> Importar</Button>}
                     <Button onClick={handleExport} variant="outline"><Download className="w-4 h-4 mr-2" /> Exportar</Button>
-                    <Button onClick={handleCloneYear} variant="outline">Clonar a Año Actual</Button>
+                    {canAdd && <Button onClick={handleCloneYear} variant="outline">Clonar a Año Actual</Button>}
                 </div>
             </motion.div>
 
@@ -134,7 +160,10 @@ const FixedAssets = () => {
                     <thead className="bg-slate-50"><tr>{['Cant.', 'Activo', 'Marca/Modelo', 'Categoría', 'Uso', 'Estado', 'Lugar', 'Valor', 'Acciones'].map(h => <th key={h} className="p-3 text-left font-semibold">{h}</th>)}</tr></thead>
                     <tbody className="divide-y">{filteredAssets.map(asset => (<tr key={asset.id} className="hover:bg-slate-50">
                         <td className="p-3">{asset.quantity || 1}</td><td className="p-3 font-medium">{asset.name}</td><td className="p-3">{asset.model}</td><td className="p-3">{asset.category}</td><td className="p-3">{asset.usage}</td><td className="p-3">{asset.status}</td><td className="p-3">{asset.location}</td><td className="p-3 font-mono">${parseFloat(asset.value).toLocaleString('es-ES')}</td>
-                        <td className="p-3"><div className="flex gap-1"><Button size="icon" variant="ghost" onClick={() => { setEditingAsset(asset); setDialogOpen(true); }}><Edit2 className="w-4 h-4" /></Button><Button size="icon" variant="ghost" className="hover:text-red-600" onClick={() => handleDeleteAsset(asset.id)}><Trash2 className="w-4 h-4" /></Button></div></td>
+                        <td className="p-3"><div className="flex gap-1">
+                            {canEdit && <Button size="icon" variant="ghost" onClick={() => { setEditingAsset(asset); setDialogOpen(true); }}><Edit2 className="w-4 h-4" /></Button>}
+                            {canDelete && <Button size="icon" variant="ghost" className="hover:text-red-600" onClick={() => handleDeleteAsset(asset.id)}><Trash2 className="w-4 h-4" /></Button>}
+                        </div></td>
                     </tr>))}</tbody>
                 </table></div>
             )}

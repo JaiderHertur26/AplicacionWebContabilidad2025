@@ -1,16 +1,17 @@
-
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
-import { Plus, Search, Edit2, Trash2, User, Building, Download } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, User, Building, Download, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useCompanyData } from '@/hooks/useCompanyData';
 import { exportToExcel } from '@/lib/excel';
+import { usePermission } from '@/hooks/usePermission';
 
 const Contacts = () => {
+  const { canEdit, canDelete, canAdd, isReadOnly } = usePermission();
   const [contacts, saveContacts] = useCompanyData('contacts');
   const [searchTerm, setSearchTerm] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -18,6 +19,9 @@ const Contacts = () => {
   const { toast } = useToast();
 
   const handleSaveContact = (contact) => {
+    if (!canAdd && !editingContact) return;
+    if (!canEdit && editingContact) return;
+
     let updatedContacts;
     if (editingContact) {
       updatedContacts = contacts.map(c => c.id === editingContact.id ? contact : c);
@@ -32,17 +36,20 @@ const Contacts = () => {
   };
 
   const handleDeleteContact = (id) => {
+    if (!canDelete) return;
     const updatedContacts = contacts.filter(c => c.id !== id);
     saveContacts(updatedContacts);
     toast({ title: "Contacto eliminado", description: "El contacto fue eliminado." });
   };
 
   const openDialogForEdit = (contact) => {
+    if (!canEdit) return;
     setEditingContact(contact);
     setDialogOpen(true);
   };
 
   const openDialogForNew = () => {
+    if (!canAdd) return;
     setEditingContact(null);
     setDialogOpen(true);
   };
@@ -83,12 +90,13 @@ const Contacts = () => {
             <h1 className="text-4xl font-bold text-slate-900">Contactos</h1>
             <p className="text-slate-600">Gestiona los datos de personas y empresas</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <Button onClick={handleExport} variant="outline" className="bg-white"><Download className="w-4 h-4 mr-2" />Exportar</Button>
-            <Button onClick={openDialogForNew} className="bg-blue-600 hover:bg-blue-700">
+            {isReadOnly && <div className="flex items-center text-slate-400 text-sm ml-2"><Lock className="w-4 h-4 mr-1"/> Acceso Parcial</div>}
+            {canAdd && <Button onClick={openDialogForNew} className="bg-blue-600 hover:bg-blue-700">
               <Plus className="w-4 h-4 mr-2" />
               Nuevo Contacto
-            </Button>
+            </Button>}
           </div>
         </motion.div>
 
@@ -136,12 +144,12 @@ const Contacts = () => {
                   </div>
                 </div>
                 <div className="flex gap-2 mt-4">
-                  <Button variant="outline" size="sm" onClick={() => openDialogForEdit(contact)} className="flex-1">
+                  {canEdit && <Button variant="outline" size="sm" onClick={() => openDialogForEdit(contact)} className="flex-1">
                     <Edit2 className="w-4 h-4 mr-2" /> Editar
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => handleDeleteContact(contact.id)} className="flex-1 hover:bg-red-50 hover:text-red-600">
+                  </Button>}
+                  {canDelete && <Button variant="outline" size="sm" onClick={() => handleDeleteContact(contact.id)} className="flex-1 hover:bg-red-50 hover:text-red-600">
                     <Trash2 className="w-4 h-4 mr-2" /> Eliminar
-                  </Button>
+                  </Button>}
                 </div>
               </motion.div>
             ))}

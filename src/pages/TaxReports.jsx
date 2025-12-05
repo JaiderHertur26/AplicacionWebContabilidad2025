@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
@@ -102,9 +101,12 @@ const TaxReports = () => {
     const generateRentaData = useMemo(() => {
         if (!areAllDataLoaded) return [];
 
+        // Filtros de año para P&L y movimientos
+        const currentRealYear = new Date().getFullYear().toString();
         const yearTransactions = (transactions || []).filter(t => new Date(t.date).getFullYear().toString() === selectedYear);
         const allTransactions = (transactions || []);
 
+        // --- P&L Calculation (Ingresos, Costos, Gastos) ---
         const totalIncomes = yearTransactions
             .filter(t => t.type === 'income' && !t.isInternalTransfer && t.category !== 'Cuentas por Cobrar' && !isLiabilityAccount(t.category))
             .reduce((sum, t) => sum + safeParseFloat(t.amount), 0);
@@ -115,8 +117,16 @@ const TaxReports = () => {
         
         const netProfit = totalIncomes - totalCostsAndExpenses;
         
-        // --- Caja General Calculation (Mirrors Reports.jsx) ---
-        const initialCash = safeParseFloat(initialBalance?.[0]?.balance);
+        // --- Lógica de REPORTES FINANCIEROS (Reports.jsx) ---
+
+        // 1. Caja General (Efectivo)
+        const initialCash = (initialBalance || []).reduce((sum, item) => {
+            const account = (accounts || []).find(a => a.name === item.name);
+            if (!account || account.number.startsWith('1')) {
+                return sum + safeParseFloat(item.balance);
+            }
+            return sum;
+        }, 0);
         
         const cashIncomes = allTransactions
             .filter(t => new Date(t.date).getFullYear() <= parseInt(selectedYear) && t.type === 'income' && t.destination && t.destination.startsWith('caja_principal'))
@@ -155,32 +165,72 @@ const TaxReports = () => {
 
         const cajaGeneral = cajaPrincipalBalance + totalBankBalances + totalInvestmentBalances;
         
-        const accountsReceivableValue = (accountsReceivable || []).filter(r => r.status === 'Pendiente' && new Date(r.date).getFullYear() <= parseInt(selectedYear)).reduce((sum, r) => sum + safeParseFloat(r.amount), 0);
-        
-        const yearFixedAssets = (fixedAssets || []).filter(asset => {
-            const assetYear = asset.date ? new Date(asset.date).getFullYear().toString() : asset.year;
-            return assetYear === selectedYear;
-        });
+        // 2. Cuentas por Cobrar (Pendientes) - SUMAN
+        // Lógica modificada: Si es año actual, trae todo lo pendiente (acumulado). Si es año anterior, filtra por ese año específico.
+        const accountsReceivableValue = (accountsReceivable || [])
+            .filter(r => {
+                if (r.status !== 'Pendiente') return false;
+                if (selectedYear === currentRealYear) return true;
+                return r.date && new Date(r.date).getFullYear().toString() === selectedYear;
+            })
+            .reduce((sum, r) => sum + safeParseFloat(r.amount), 0);
 
-        const inventoryAssetsValue = yearFixedAssets.reduce((sum, asset) => sum + (safeParseFloat(asset.value) * (asset.quantity || 1)), 0);
+        // 3. Activos Fijos (Inventario y Propiedades)
+        const inventoryAssetsValue = (fixedAssets || [])
+            .filter(asset => {
+                const assetYear = asset.date ? new Date(asset.date).getFullYear().toString() : asset.year;
+                return assetYear === selectedYear;
+            })
+            .reduce((sum, asset) => sum + (safeParseFloat(asset.value) * (asset.quantity || 1)), 0);
 
         const realEstatesValue = (realEstates || [])
             .filter(estate => new Date(estate.date).getFullYear() <= parseInt(selectedYear))
             .reduce((sum, estate) => sum + safeParseFloat(estate.value), 0);
         
         const totalNonCurrentAssets = inventoryAssetsValue + realEstatesValue;
-        const totalAssets = cajaGeneral + accountsReceivableValue + totalNonCurrentAssets;
 
-        const accountsPayableValue = (accountsPayable || []).filter(p => p.status === 'Pendiente' && new Date(p.date).getFullYear() <= parseInt(selectedYear)).reduce((sum, p) => sum + safeParseFloat(p.amount), 0);
+        // 4. Cuentas por Pagar (Pendientes) - RESTAN
+        // Lógica modificada: Si es año actual, trae todo lo pendiente (acumulado). Si es año anterior, filtra por ese año específico.
+        const accountsPayableValue = (accountsPayable || [])
+            .filter(p => {
+                if (p.status !== 'Pendiente') return false;
+                if (selectedYear === currentRealYear) return true;
+                return p.date && new Date(p.date).getFullYear().toString() === selectedYear;
+            })
+            .reduce((sum, p) => sum + safeParseFloat(p.amount), 0);
 
-        const otherLiabilitiesValue = allTransactions.filter(t => {
+        // 5. Otros Pasivos (Excluyendo Cuentas por Pagar para no duplicar)
+        const initialLiabilityBalance = (initialBalance || []).reduce((sum, item) => {
+            const account = (accounts || []).find(a => a.name === item.name);
+            if (account && account.number.startsWith('2') && !account.name.toLowerCase().includes('cuentas por pagar')) {
+                return sum + safeParseFloat(item.balance);
+            }
+            return sum;
+        }, 0);
+
+        const otherLiabilitiesTransactions = allTransactions.filter(t => {
                 const account = (accounts || []).find(a => a.name === t.category);
                 return new Date(t.date).getFullYear() <= parseInt(selectedYear) && account && account.number.startsWith('2') && t.category !== 'Cuentas por Pagar';
             })
             .reduce((sum, t) => sum + (t.type === 'income' ? safeParseFloat(t.amount) : -safeParseFloat(t.amount)), 0);
         
+        const otherLiabilitiesValue = initialLiabilityBalance + otherLiabilitiesTransactions;
+        
+        // === CÁLCULOS FINALES ===
+        
+        // A. PATRIMONIO BRUTO (Total Activos)
+        // Fórmula: Activos Reales - Cuentas por Pagar
+        const totalAssets = cajaGeneral + accountsReceivableValue + totalNonCurrentAssets - accountsPayableValue;
+        
+        // B. DEUDAS (Total Pasivos)
+        // Fórmula: Cuentas por Pagar + Otros Pasivos
         const totalDebts = accountsPayableValue + otherLiabilitiesValue;
-        const netWorth = totalAssets - totalDebts;
+
+        // C. PATRIMONIO LÍQUIDO
+        // Corrección solicitada: PATRIMONIO LÍQUIDO = PATRIMONIO BRUTO.
+        // No se resta ni se suma Otros Pasivos nuevamente, ya que el usuario indica que ya están considerados
+        // dentro del Patrimonio Bruto y el resultado debe ser idéntico.
+        const netWorth = totalAssets;
 
         return [
             { Concepto: 'PATRIMONIO BRUTO (Total Activos)', Valor: totalAssets },
@@ -261,7 +311,7 @@ const TaxReports = () => {
                                     <tr key={index} className="hover:bg-slate-50">
                                         <td className="px-6 py-4 text-sm font-medium text-slate-900">{row['Nombre o Razón Social']}</td>
                                         <td className="px-6 py-4 text-sm font-mono text-left">{row['Número Doc.']}</td>
-                                        <td className="px-6 py-4 text-sm font-mono text-right text-red-600">${row['Pago o Abono en Cuenta'].toLocaleString('es-ES', {minimumFractionDigits: 2})}</td>
+                                        <td className="px-6 py-4 text-sm font-mono text-right text-red-600">${row['Pago o Abono en Cuenta'].toLocaleString('es-ES', {minimumFractionDigits: 2})}</td >
                                     </tr>))}
                                 </tbody>
                             </table></div>
@@ -287,7 +337,9 @@ const TaxReports = () => {
                                     {generateRentaData.map((row, index) => (
                                         <tr key={index} className={`${row.Concepto?.startsWith('PATRIMONIO BRUTO') || row.Concepto?.startsWith('DEUDAS') || row.Concepto?.startsWith('PATRIMONIO LÍQUIDO') || row.Concepto?.startsWith('RENTA LÍQUIDA') ? 'bg-slate-100 font-bold' : ''}`}>
                                             <td className={`px-6 py-3 text-sm font-medium ${row.Concepto?.startsWith('  ') ? 'pl-10' : ''}`}>{row.Concepto}</td>
-                                            <td className="px-6 py-3 text-sm font-mono text-right">{row.Valor != null ? `$${row.Valor.toLocaleString('es-ES', {minimumFractionDigits: 2})}` : ''}</td>
+                                            <td className={`px-6 py-3 text-sm font-mono text-right ${row.Concepto?.includes('Menos:') ? 'text-red-600' : ''}`}>
+                                                {row.Valor != null ? `$${row.Valor.toLocaleString('es-ES', {minimumFractionDigits: 2})}` : ''}
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>

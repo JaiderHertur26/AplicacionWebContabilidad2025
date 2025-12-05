@@ -1,15 +1,16 @@
-
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
-import { Plus, Edit2, Trash2, Building, Search } from 'lucide-react';
+import { Plus, Edit2, Trash2, Building, Search, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useCompanyData } from '@/hooks/useCompanyData';
+import { usePermission } from '@/hooks/usePermission';
 
 const RealEstates = () => {
+    const { canEdit, canDelete, canAdd, isReadOnly } = usePermission();
     const [realEstates, saveRealEstates] = useCompanyData('realEstates');
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingEstate, setEditingEstate] = useState(null);
@@ -17,6 +18,9 @@ const RealEstates = () => {
     const { toast } = useToast();
 
     const handleSaveEstate = (estateData) => {
+        if (!canAdd && !editingEstate) return;
+        if (!canEdit && editingEstate) return;
+
         let updatedEstates;
         if (editingEstate) {
             updatedEstates = realEstates.map(estate => estate.id === editingEstate.id ? { ...estate, ...estateData } : estate);
@@ -30,6 +34,7 @@ const RealEstates = () => {
     };
 
     const handleDeleteEstate = (id) => {
+        if (!canDelete) return;
         saveRealEstates(realEstates.filter(estate => estate.id !== id));
         toast({ title: "Propiedad eliminada" });
     };
@@ -45,7 +50,10 @@ const RealEstates = () => {
             <div className="space-y-6">
                 <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="flex justify-between items-center">
                     <div><h1 className="text-4xl font-bold text-slate-900">Propiedades y Oficinas</h1></div>
-                    <Button onClick={() => { setEditingEstate(null); setDialogOpen(true); }} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-4 h-4 mr-2" /> Nueva Propiedad</Button>
+                    <div className="flex items-center gap-2">
+                        {isReadOnly && <span className="flex items-center text-slate-400 text-sm"><Lock className="w-4 h-4 mr-1"/>Acceso Parcial</span>}
+                        {canAdd && <Button onClick={() => { setEditingEstate(null); setDialogOpen(true); }} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-4 h-4 mr-2" /> Nueva Propiedad</Button>}
+                    </div>
                 </motion.div>
                 
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-xl shadow-lg p-6 border">
@@ -65,7 +73,10 @@ const RealEstates = () => {
                             <td className="p-3">{estate.address}</td>
                             <td className="p-3">{estate.date}</td>
                             <td className="p-3 font-mono">${parseFloat(estate.value).toLocaleString('es-ES', { minimumFractionDigits: 2 })}</td>
-                            <td className="p-3"><div className="flex gap-1"><Button size="icon" variant="ghost" onClick={() => { setEditingEstate(estate); setDialogOpen(true); }}><Edit2 className="w-4 h-4" /></Button><Button size="icon" variant="ghost" className="hover:text-red-600" onClick={() => handleDeleteEstate(estate.id)}><Trash2 className="w-4 h-4" /></Button></div></td>
+                            <td className="p-3"><div className="flex gap-1">
+                                {canEdit && <Button size="icon" variant="ghost" onClick={() => { setEditingEstate(estate); setDialogOpen(true); }}><Edit2 className="w-4 h-4" /></Button>}
+                                {canDelete && <Button size="icon" variant="ghost" className="hover:text-red-600" onClick={() => handleDeleteEstate(estate.id)}><Trash2 className="w-4 h-4" /></Button>}
+                            </div></td>
                         </tr>))}</tbody>
                     </table></div>
                 )}

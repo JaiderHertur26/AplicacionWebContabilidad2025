@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import Layout from '@/components/Layout';
@@ -17,11 +17,13 @@ import RealEstates from '@/pages/RealEstates';
 import TaxReports from '@/pages/TaxReports';
 import AccountsReceivable from '@/pages/AccountsReceivable';
 import AccountsPayable from '@/pages/AccountsPayable';
+import Organization from '@/pages/Organization';
 import { Toaster } from '@/components/ui/toaster';
 import { useCompanyData } from '@/hooks/useCompanyData';
+import { CompanyContext, useCompany } from '@/contexts/CompanyContext';
 
-const CompanyContext = createContext();
-export const useCompany = () => useContext(CompanyContext);
+// Re-export useCompany for backward compatibility with other components
+export { useCompany };
 
 const InitialAccountsSetup = ({ children }) => {
   const { activeCompany } = useCompany();
@@ -38,12 +40,12 @@ const InitialAccountsSetup = ({ children }) => {
       ];
 
       if (accounts.length === 0) {
-        const newAccounts = requiredAccounts.map(reqAcc => ({
-          id: `${Date.now()}-${reqAcc.number}`,
-          number: reqAcc.number,
-          name: reqAcc.name,
-        }));
-        saveAccounts(newAccounts.sort((a, b) => a.number.localeCompare(b.number)));
+          const newAccounts = requiredAccounts.map(reqAcc => ({
+            id: `${Date.now()}-${reqAcc.number}`,
+            number: reqAcc.number,
+            name: reqAcc.name,
+          }));
+          saveAccounts(newAccounts.sort((a, b) => a.number.localeCompare(b.number)));
       }
     }
   }, [activeCompany, accounts, saveAccounts, isAccountsLoaded]);
@@ -51,31 +53,42 @@ const InitialAccountsSetup = ({ children }) => {
   return isAccountsLoaded || !activeCompany ? children : null;
 };
 
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeCompany, setActiveCompany] = useState(null);
   const [companies, setCompanies] = useState([]);
   const [isGeneralAdmin, setIsGeneralAdmin] = useState(false);
+  const [accessLevel, setAccessLevel] = useState('full'); 
+  const [isConsolidated, setIsConsolidated] = useState(false);
 
-  // Restaurar sesión desde sessionStorage
   useEffect(() => {
-    const session = sessionStorage.getItem('auth_session');
-    if (session) {
-      const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
+    const session = localStorage.getItem('auth_session');
+    const storedAccessLevel = localStorage.getItem('auth_access_level') || 'full';
 
+    if (session) {
       if (session === 'general_admin') {
         setIsAuthenticated(true);
         setIsGeneralAdmin(true);
+        setAccessLevel('full');
+        const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
         setCompanies(storedCompanies);
       } else {
+        const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
         const loggedInCompany = storedCompanies.find(c => c.id === session);
         if (loggedInCompany) {
-          setIsAuthenticated(true);
-          setActiveCompany(loggedInCompany);
-          setIsGeneralAdmin(false);
           setCompanies(storedCompanies);
+          setActiveCompany(loggedInCompany);
+          setIsAuthenticated(true);
+          setIsGeneralAdmin(false);
+          setAccessLevel(storedAccessLevel);
+          
+          // Load consolidation preference
+          const storedConsolidation = localStorage.getItem(`${loggedInCompany.id}-consolidate`) === 'true';
+          setIsConsolidated(storedConsolidation);
         } else {
-          sessionStorage.removeItem('auth_session');
+          localStorage.removeItem('auth_session');
+          localStorage.removeItem('auth_access_level');
         }
       }
     }
@@ -83,41 +96,51 @@ function App() {
 
   const handleLogin = (loginData) => {
     setIsAuthenticated(true);
+    const level = loginData.accessLevel || 'full';
+    setAccessLevel(level);
+    localStorage.setItem('auth_access_level', level);
 
     if (loginData.isGeneralAdmin) {
-      setIsGeneralAdmin(true);
-      setActiveCompany(null);
-      sessionStorage.setItem('auth_session', 'general_admin');
+        setIsGeneralAdmin(true);
+        setActiveCompany(null);
+        localStorage.setItem('auth_session', 'general_admin');
     } else {
-      setIsGeneralAdmin(false);
-      setActiveCompany(loginData.company);
-      sessionStorage.setItem('auth_session', loginData.company.id);
+        setIsGeneralAdmin(false);
+        setActiveCompany(loginData.company);
+        localStorage.setItem('auth_session', loginData.company.id);
+        
+        // Reset consolidation on new login
+        setIsConsolidated(false);
+        localStorage.removeItem(`${loginData.company.id}-consolidate`);
     }
-
-    localStorage.setItem('companies', JSON.stringify(loginData.allCompanies || []));
-    setCompanies(loginData.allCompanies || []);
+    const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
+    setCompanies(storedCompanies);
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
     setIsGeneralAdmin(false);
-    sessionStorage.removeItem('auth_session');
+    localStorage.removeItem('auth_session');
+    localStorage.removeItem('auth_access_level');
     setActiveCompany(null);
+    setAccessLevel('full');
+    setIsConsolidated(false);
   };
 
-  const selectCompany = (company) => {
-    if (isGeneralAdmin) return;
-    if (company.id !== activeCompany?.id) {
-      handleLogout();
-    }
+  const toggleConsolidation = (value) => {
+    if (!activeCompany) return;
+    setIsConsolidated(value);
+    localStorage.setItem(`${activeCompany.id}-consolidate`, String(value));
   };
-
+  
   const companyContextValue = {
     activeCompany,
-    selectCompany,
     companies,
     setCompanies,
     isGeneralAdmin,
+    accessLevel,
+    isConsolidated,
+    toggleConsolidation
   };
 
   const MainApp = () => (
@@ -127,6 +150,8 @@ function App() {
           <Route path="/" element={isGeneralAdmin ? <Navigate to="/companies" /> : <Dashboard />} />
           <Route path="/companies" element={<Companies />} />
           <Route path="/settings" element={<Settings />} />
+          
+          <Route path="/organization" element={!isGeneralAdmin ? <Organization /> : <Navigate to="/companies" />} />
 
           <Route path="/transactions" element={!isGeneralAdmin ? <Transactions /> : <Navigate to="/companies" />} />
           <Route path="/bank-accounts" element={!isGeneralAdmin ? <BankAccounts /> : <Navigate to="/companies" />} />
@@ -139,7 +164,7 @@ function App() {
           <Route path="/book-closings" element={!isGeneralAdmin ? <BookClosings /> : <Navigate to="/companies" />} />
           <Route path="/accounts-receivable" element={!isGeneralAdmin ? <AccountsReceivable /> : <Navigate to="/companies" />} />
           <Route path="/accounts-payable" element={!isGeneralAdmin ? <AccountsPayable /> : <Navigate to="/companies" />} />
-
+          
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </InitialAccountsSetup>
@@ -150,9 +175,8 @@ function App() {
     <>
       <Helmet>
         <title>JaiderHerTur26 - Sistema de Contabilidad</title>
-        <meta name="description" content="Gestión contable profesional" />
+        <meta name="description" content="Gestiona tu contabilidad de forma profesional con JaiderHerTur26." />
       </Helmet>
-
       <CompanyContext.Provider value={companyContextValue}>
         <Router>
           <Toaster />

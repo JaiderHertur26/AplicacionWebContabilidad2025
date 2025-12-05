@@ -1,12 +1,13 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
-import { Download } from 'lucide-react';
+import { Download, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { exportToExcel } from '@/lib/excel';
 import { useCompanyData } from '@/hooks/useCompanyData';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 const Reports = () => {
   const [transactions] = useCompanyData('transactions');
@@ -18,6 +19,8 @@ const Reports = () => {
   const [accountsReceivable] = useCompanyData('accountsReceivable');
   const [accountsPayable] = useCompanyData('accountsPayable');
   
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
+
   const [reportData, setReportData] = useState({
     incomeStatement: [],
     balanceSheet: { assets: [], liabilities: [], equity: [], totals: {} },
@@ -25,9 +28,16 @@ const Reports = () => {
   });
   const { toast } = useToast();
 
+  const availableYears = useMemo(() => {
+      const years = new Set((transactions || []).map(t => new Date(t.date).getFullYear()));
+      const current = new Date().getFullYear();
+      years.add(current);
+      return Array.from(years).sort((a, b) => b - a).map(String);
+  }, [transactions]);
+
   useEffect(() => {
     generateReportData();
-  }, [transactions, accounts, bankAccounts, initialBalance, fixedAssets, realEstates, accountsReceivable, accountsPayable]);
+  }, [transactions, accounts, bankAccounts, initialBalance, fixedAssets, realEstates, accountsReceivable, accountsPayable, selectedYear]);
 
   const generateReportData = () => {
     const safeParseFloat = (value) => {
@@ -37,7 +47,25 @@ const Reports = () => {
     
     const allTransactions = transactions || [];
     const allAccounts = accounts || [];
-    const currentYear = new Date().getFullYear().toString();
+    const currentYear = selectedYear;
+    const currentRealYear = new Date().getFullYear().toString();
+
+    // 1. Identificar Cuentas de Caja (Principal y de Sub-empresas)
+    const cashAccountIds = new Set();
+    cashAccountIds.add('caja_principal');
+    if (allAccounts) {
+        allAccounts.forEach(acc => {
+            if (acc.number === '11050501' || acc.name.toUpperCase() === 'CAJA PRINCIPAL') {
+                cashAccountIds.add(acc.id);
+            }
+        });
+    }
+
+    // Filter transactions for P&L (Strictly selected year)
+    const pnlTransactions = allTransactions.filter(t => new Date(t.date).getFullYear().toString() === currentYear);
+
+    // Filter transactions for Balance Sheet (Cumulative up to selected year)
+    const bsTransactions = allTransactions.filter(t => new Date(t.date).getFullYear() <= parseInt(currentYear));
 
     const isLiabilityAccount = (categoryName) => {
         const account = allAccounts.find(a => a.name === categoryName);
@@ -45,11 +73,12 @@ const Reports = () => {
     };
 
     // --- Income Statement Calculations (P&L) ---
-    const totalIncome = allTransactions
+    // Use pnlTransactions
+    const totalIncome = pnlTransactions
         .filter(t => t.type === 'income' && !t.isInternalTransfer && t.category !== 'Cuentas por Cobrar' && !isLiabilityAccount(t.category))
         .reduce((sum, t) => sum + safeParseFloat(t.amount), 0);
     
-    const totalExpenses = allTransactions
+    const totalExpenses = pnlTransactions
         .filter(t => t.type === 'expense' && !t.isInternalTransfer && !t.isFixedAsset && t.category !== 'Cuentas por Pagar' && !isLiabilityAccount(t.category))
         .reduce((sum, t) => sum + safeParseFloat(t.amount), 0);
 
@@ -58,7 +87,7 @@ const Reports = () => {
     
     const summaryData = { totalIncome, totalExpenses, netProfit, profitMargin };
     
-    const calculateTotalForCategory = (categoryName) => allTransactions
+    const calculateTotalForCategory = (categoryName) => pnlTransactions
         .filter(t => t.category === categoryName && !t.isFixedAsset && !t.isInternalTransfer && !isLiabilityAccount(t.category))
         .reduce((sum, t) => sum + safeParseFloat(t.amount), 0);
 
@@ -81,17 +110,27 @@ const Reports = () => {
     ];
     
     // --- Balance Sheet Calculations ---
-    const initialCash = safeParseFloat(initialBalance?.[0]?.balance);
+    
+    // Lógica simplificada para Caja Principal: Saldo Inicial + Ingresos - Egresos
+    const initialCash = (initialBalance || []).reduce((sum, item) => sum + safeParseFloat(item.balance), 0);
+
     const initialBankTotal = (bankAccounts || []).reduce((sum, acc) => sum + safeParseFloat(acc.initialBalance), 0);
     const initialInvestmentTotal = (bankAccounts || []).reduce((sum, acc) => sum + safeParseFloat(acc.initialInvestmentBalance), 0);
 
-    const cashIncomes = allTransactions
-        .filter(t => t.type === 'income' && t.destination && t.destination.startsWith('caja_principal'))
-        .reduce((sum, t) => sum + safeParseFloat(t.amount), 0);
+    let cashIncomes = 0;
+    let cashExpenses = 0;
 
-    const cashExpenses = allTransactions
-        .filter(t => t.type === 'expense' && t.destination && t.destination.startsWith('caja_principal'))
-        .reduce((sum, t) => sum + safeParseFloat(t.amount), 0);
+    bsTransactions.forEach(t => {
+        const amount = safeParseFloat(t.amount);
+        // Usar IDs correctos para sub-empresas
+        if (t.destination && (cashAccountIds.has(t.destination) || t.destination.startsWith('caja_principal'))) {
+             if (t.type === 'income') {
+                 cashIncomes += amount;
+             } else if (t.type === 'expense') {
+                 cashExpenses += amount;
+             }
+        }
+    });
         
     const cajaPrincipalBalance = initialCash + cashIncomes - cashExpenses;
 
@@ -102,7 +141,8 @@ const Reports = () => {
         let currentBankBalance = safeParseFloat(acc.initialBalance);
         let currentInvestmentBalance = safeParseFloat(acc.initialInvestmentBalance);
 
-        allTransactions.forEach(t => {
+        // Filter bank transactions by bsTransactions
+        bsTransactions.forEach(t => {
             const amount = safeParseFloat(t.amount);
             if(t.destination && t.destination.startsWith(acc.id)) {
                  if (t.type === 'income') {
@@ -123,22 +163,38 @@ const Reports = () => {
     const cajaGeneralTotal = cajaPrincipalBalance + totalBankBalances + totalInvestmentBalances;
     
     const inventoryAssetsValue = (fixedAssets || [])
-      .filter(asset => asset.year === currentYear)
+      .filter(asset => asset.year === currentYear || (asset.date && new Date(asset.date).getFullYear().toString() === currentYear))
       .reduce((sum, asset) => sum + (safeParseFloat(asset.value) * (safeParseFloat(asset.quantity) || 1)), 0);
 
     const realEstatesValue = (realEstates || [])
+      .filter(estate => new Date(estate.date).getFullYear() <= parseInt(currentYear))
       .reduce((sum, estate) => sum + safeParseFloat(estate.value), 0);
 
     const totalFixedAssetsValue = inventoryAssetsValue + realEstatesValue;
 
     const manuallyAddedAssetsValue = (fixedAssets || [])
-      .filter(asset => !asset.transactionId && asset.year === currentYear)
+      .filter(asset => !asset.transactionId && (asset.year === currentYear || (asset.date && new Date(asset.date).getFullYear().toString() === currentYear)))
       .reduce((sum, asset) => sum + (safeParseFloat(asset.value) * (safeParseFloat(asset.quantity) || 1)), 0);
     
-    const accountsReceivableValue = (accountsReceivable || []).filter(r => r.status === 'Pendiente').reduce((sum, r) => sum + safeParseFloat(r.amount), 0);
-    const accountsPayableValue = (accountsPayable || []).filter(p => p.status === 'Pendiente').reduce((sum, p) => sum + safeParseFloat(p.amount), 0);
+    // --- Cuentas por Cobrar y Pagar ---
     
-    const otherLiabilitiesTransactions = allTransactions.filter(t => {
+    const accountsReceivableValue = (accountsReceivable || [])
+        .filter(r => {
+            if (r.status !== 'Pendiente') return false;
+            if (selectedYear === currentRealYear) return true;
+            return r.date && new Date(r.date).getFullYear().toString() === selectedYear;
+        })
+        .reduce((sum, r) => sum + safeParseFloat(r.amount), 0);
+
+    const accountsPayableValue = (accountsPayable || [])
+        .filter(p => {
+            if (p.status !== 'Pendiente') return false;
+            if (selectedYear === currentRealYear) return true;
+            return p.date && new Date(p.date).getFullYear().toString() === selectedYear;
+        })
+        .reduce((sum, p) => sum + safeParseFloat(p.amount), 0);
+    
+    const otherLiabilitiesTransactions = bsTransactions.filter(t => {
         const account = allAccounts.find(a => a.name === t.category);
         return account && account.number.startsWith('2') && t.category !== 'Cuentas por Pagar';
     });
@@ -167,8 +223,21 @@ const Reports = () => {
     // --- Capital Social Calculation ---
     const initialCapitalBase = initialCash + initialBankTotal + initialInvestmentTotal;
 
+    // Calculate Retained Earnings from Previous Years
+    const previousYearsTransactions = allTransactions.filter(t => new Date(t.date).getFullYear() < parseInt(currentYear));
+
+    const prevTotalIncome = previousYearsTransactions
+        .filter(t => t.type === 'income' && !t.isInternalTransfer && t.category !== 'Cuentas por Cobrar' && !isLiabilityAccount(t.category))
+        .reduce((sum, t) => sum + safeParseFloat(t.amount), 0);
+    
+    const prevTotalExpenses = previousYearsTransactions
+        .filter(t => t.type === 'expense' && !t.isInternalTransfer && !t.isFixedAsset && t.category !== 'Cuentas por Pagar' && !isLiabilityAccount(t.category))
+        .reduce((sum, t) => sum + safeParseFloat(t.amount), 0);
+
+    const retainedEarnings = prevTotalIncome - prevTotalExpenses;
+
     const revaluationOfPurchasedAssets = (fixedAssets || [])
-        .filter(asset => asset.transactionId && asset.year === currentYear)
+        .filter(asset => asset.transactionId && (asset.year === currentYear || (asset.date && new Date(asset.date).getFullYear().toString() === currentYear)))
         .reduce((sum, asset) => {
             const purchaseTransaction = allTransactions.find(t => t.id === asset.transactionId);
             const purchaseCost = purchaseTransaction ? safeParseFloat(purchaseTransaction.amount) : 0;
@@ -176,15 +245,17 @@ const Reports = () => {
             return sum + (currentValue - purchaseCost);
         }, 0);
 
-    const capitalSocial = initialCapitalBase + manuallyAddedAssetsValue + revaluationOfPurchasedAssets + realEstatesValue;
+    // Capital Social
+    const capitalSocial = initialCapitalBase + manuallyAddedAssetsValue + revaluationOfPurchasedAssets + realEstatesValue - accountsPayableValue + retainedEarnings;
 
     const equity = [
         { item: 'Patrimonio', isBold: true },
-        { item: '  Capital Social', amount: capitalSocial },
+        { item: '  Capital Social (Inc. Utilidades Acum.)', amount: capitalSocial },
         { item: '  Utilidad del Ejercicio', amount: netProfit },
     ];
     
-    const totalAssets = cajaGeneralTotal + accountsReceivableValue + totalFixedAssetsValue;
+    const totalAssets = cajaGeneralTotal + accountsReceivableValue + totalFixedAssetsValue - accountsPayableValue;
+    
     const totalLiabilities = accountsPayableValue + otherLiabilitiesValue;
     const totalEquity = capitalSocial + netProfit;
 
@@ -205,8 +276,8 @@ const Reports = () => {
   
   const handleExportReport = (data, name) => {
     const formattedData = data.map(({ item, amount }) => ({ 'Concepto': item, 'Monto': amount, }));
-    exportToExcel(formattedData, name);
-    toast({ title: 'Exportado a Excel', description: `El reporte ${name} ha sido guardado.` });
+    exportToExcel(formattedData, `${name}_${selectedYear}`);
+    toast({ title: 'Exportado a Excel', description: `El reporte ${name} (${selectedYear}) ha sido guardado.` });
   };
   
   const handleExportBalanceSheet = () => {
@@ -220,7 +291,7 @@ const Reports = () => {
         { Categoria: 'TOTAL PATRIMONIO', Monto: totals.equity }, {},
         { Categoria: 'TOTAL PASIVO + PATRIMONIO', Monto: totals.liabilitiesAndEquity }
     ];
-    exportToExcel(dataToExport, 'Balance_General');
+    exportToExcel(dataToExport, `Balance_General_${selectedYear}`);
   }
 
   const renderSheetTable = (items) => (
@@ -232,11 +303,31 @@ const Reports = () => {
     ))
   );
 
+  const YearSelector = () => (
+      <div className="flex items-center space-x-2">
+          <Calendar className="w-5 h-5 text-slate-500" />
+          <Label htmlFor="year-select" className="font-medium">Año Fiscal:</Label>
+          <Select value={selectedYear} onValueChange={setSelectedYear}>
+              <SelectTrigger id="year-select" className="w-[120px] bg-white">
+                  <SelectValue placeholder="Año" />
+              </SelectTrigger>
+              <SelectContent>
+                  {availableYears.map(year => (
+                      <SelectItem key={year} value={year}>{year}</SelectItem>
+                  ))}
+              </SelectContent>
+          </Select>
+      </div>
+  );
+
   return (
     <>
       <Helmet><title>Reportes - JaiderHerTur26</title></Helmet>
       <div className="space-y-8">
-        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}><h1 className="text-4xl font-bold text-slate-900 mb-2">Reportes Financieros</h1></motion.div>
+        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+            <h1 className="text-4xl font-bold text-slate-900 mb-2">Reportes Financieros</h1>
+            <YearSelector />
+        </motion.div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="bg-green-100 p-6 rounded-lg border border-green-200"><p className="text-sm text-green-800">Ingresos (P&L)</p><p className="text-2xl font-bold text-green-900">${reportData.summary.totalIncome.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</p></div>
             <div className="bg-red-100 p-6 rounded-lg border border-red-200"><p className="text-sm text-red-800">Gastos (P&L)</p><p className="text-2xl font-bold text-red-900">${reportData.summary.totalExpenses.toLocaleString('es-ES', { minimumFractionDigits: 2 })}</p></div>

@@ -1,4 +1,3 @@
-
 import * as XLSX from 'xlsx';
 
 function applyStylesAndFormats(worksheet, data, footer, headers) {

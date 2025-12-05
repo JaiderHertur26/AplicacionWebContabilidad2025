@@ -2,23 +2,89 @@
 import React from 'react';
 import { useCompany } from '@/App';
 import { numberToWords } from '@/lib/numberToWords';
+import { parseISO, format, isValid } from 'date-fns';
 
 const VoucherContent = ({ transaction }) => {
-  const { activeCompany } = useCompany();
+  const { activeCompany, companies } = useCompany();
 
   if (!transaction || !activeCompany) return <div className="p-8 text-center text-slate-500">Cargando datos...</div>;
 
-  const contacts = JSON.parse(localStorage.getItem(`${activeCompany.id}-contacts`) || '[]');
-  const contact = contacts.find(c => c.id === transaction.contactId);
-  const accounts = JSON.parse(localStorage.getItem(`${activeCompany.id}-accounts`) || '[]');
-  const account = accounts.find(acc => acc.name === transaction.category);
+  // Determine which company this transaction belongs to
+  const transactionCompanyId = transaction._companyId || activeCompany.id;
+  const company = companies.find(c => c.id === transactionCompanyId) || activeCompany;
 
-  const dateObj = new Date(transaction.date);
-  const userTimezoneOffset = dateObj.getTimezoneOffset() * 60000;
-  const date = new Date(dateObj.getTime() + userTimezoneOffset);
-  const day = date.getDate();
-  const month = date.toLocaleString('es-ES', { month: 'long' }).toUpperCase();
-  const year = date.getFullYear();
+  const contacts = JSON.parse(localStorage.getItem(`${company.id}-contacts`) || '[]');
+  const contact = contacts.find(c => c.id === transaction.contactId);
+  
+  // Load necessary data for account resolution
+  const accounts = JSON.parse(localStorage.getItem(`${company.id}-accounts`) || '[]');
+  const bankAccounts = JSON.parse(localStorage.getItem(`${company.id}-bankAccounts`) || '[]');
+  const initialBalances = JSON.parse(localStorage.getItem(`${company.id}-initialBalance`) || '[]');
+
+  // --- ACCOUNT RESOLUTION LOGIC (Mirrors Transactions.jsx logic) ---
+  const getAccountDetails = () => {
+    // 1. If it's a regular transaction (Income/Expense) NOT transfer, use Category
+    if (!transaction.isInternalTransfer) {
+        const acc = accounts.find(a => a.name === transaction.category);
+        if (acc) return { code: acc.number, name: acc.name };
+        
+        // Fallback for default categories
+        if (transaction.type === 'income') return { code: '4105', name: transaction.category || 'INGRESO' };
+        return { code: '5105', name: transaction.category || 'GASTO' };
+    }
+
+    // 2. If it's an Internal Transfer, we need to determine the MAIN account for this voucher.
+    // For 'Income' part of transfer (Receiving): The Asset Account (Bank/Cash/Aporte)
+    // For 'Expense' part of transfer (Sending): The Asset Account (Bank/Cash)
+    // NOTE: The user specifically asked for the destination account details to appear.
+    
+    const destinationStr = transaction.destination || '';
+    const [id, name] = destinationStr.split('|');
+    const categoryName = (transaction.category || '').toUpperCase();
+
+    // Priority A: Check for Cash Account
+    if (id === 'caja_principal' || (name && name.toUpperCase().includes('CAJA'))) {
+        const defaultCash = (initialBalances && initialBalances.length > 0) ? initialBalances[0] : null;
+        return {
+            code: defaultCash?.accountingCode || '11050501',
+            name: defaultCash?.accountingName || 'CAJA PRINCIPAL'
+        };
+    }
+
+    // Priority B: Special case: Aportes Account
+    if (id === '12950501' || 
+        (name && name.toUpperCase().includes('APORTES COOPERATIVA')) ||
+        (categoryName && (categoryName.includes('APORTES COOPERATIVA') || categoryName.includes('12950501')))
+    ) {
+        return { code: '12950501', name: 'APORTES COOPERATIVA FRATERNIDAD' };
+    }
+
+    // Priority C: Check for Bank Account
+    const bank = bankAccounts.find(b => b.id === id);
+    if (bank) {
+        return { 
+            code: bank.accountingCode || '1110', 
+            name: bank.accountingConcept || bank.bankName 
+        };
+    }
+
+    // Priority D: Explicit ID/Name in destination string
+    if (/^\d+$/.test(id) && id.length >= 4) {
+        return { code: id, name: name || 'CUENTA DESTINO' };
+    }
+
+    // Fallback
+    return { code: '', name: transaction.category || 'TRANSFERENCIA' };
+  };
+
+  const accountDetails = getAccountDetails();
+
+  // Date Formatting
+  const dateObj = parseISO(transaction.date);
+  const formattedDate = isValid(dateObj) ? format(dateObj, 'dd/MM/yyyy') : 'Fecha inválida';
+  const day = isValid(dateObj) ? dateObj.getDate() : '--';
+  const month = isValid(dateObj) ? format(dateObj, 'MMMM').toUpperCase() : '----';
+  const year = isValid(dateObj) ? dateObj.getFullYear() : '----';
 
   const amount = transaction.amount ? parseFloat(transaction.amount) : 0;
   const amountInWords = numberToWords(amount);
@@ -43,15 +109,15 @@ const VoucherContent = ({ transaction }) => {
       <div>
         <header className="flex justify-between items-start pb-2 mb-2 border-b-2 border-black">
           <div className="w-2/3 text-center">
-            <h1 className="font-bold text-base uppercase">{activeCompany.name || 'NOMBRE EMPRESA'}</h1>
-            <p>{activeCompany.name || 'NOMBRE EMPRESA'}</p>
-            <p>NIT: {activeCompany.doc || 'NIT EMPRESA'}</p>
-            <p>{activeCompany.address || 'DIRECCIÓN EMPRESA'} - Tel: {activeCompany.phone || 'TELÉFONO'}</p>
+            <h1 className="font-bold text-base uppercase">{company.name || 'NOMBRE EMPRESA'}</h1>
+            <p>{company.name || 'NOMBRE EMPRESA'}</p>
+            <p>NIT: {company.nit || company.doc || 'NIT EMPRESA'}</p>
+            <p>{company.address || 'DIRECCIÓN EMPRESA'} - Tel: {company.phone || 'TELÉFONO'}</p>
           </div>
           <div className="w-1/3">
             <table className="text-xs border-collapse w-full" style={{border: '1px solid black'}}>
               <tbody>
-                <tr><td className="font-bold p-1 bg-gray-200" style={{border: '1px solid black'}}>FECHA REGISTRO:</td><td className="p-1 text-center" style={{border: '1px solid black'}}>{date.toLocaleDateString('es-ES')}</td></tr>
+                <tr><td className="font-bold p-1 bg-gray-200" style={{border: '1px solid black'}}>FECHA REGISTRO:</td><td className="p-1 text-center" style={{border: '1px solid black'}}>{formattedDate}</td></tr>
                 <tr><td className="font-bold p-1 bg-gray-200" style={{border: '1px solid black'}}>N° COMPROBANTE:</td><td className="font-bold text-red-600 text-center p-1" style={{border: '1px solid black'}}>{voucherNumber}</td></tr>
               </tbody>
             </table>
@@ -95,8 +161,8 @@ const VoucherContent = ({ transaction }) => {
                 <thead><tr><th className="font-bold bg-gray-200 p-1" style={{border: '1px solid black'}}>CÓDIGO</th><th className="font-bold bg-gray-200 p-1" style={{border: '1px solid black'}}>CUENTA</th><th className="font-bold bg-gray-200 p-1" style={{border: '1px solid black'}}>DEBE</th><th className="font-bold bg-gray-200 p-1" style={{border: '1px solid black'}}>HABER</th></tr></thead>
                 <tbody>
                     <tr>
-                        <td className="p-1 text-center" style={{border: '1px solid black'}}>{account?.number || ''}</td>
-                        <td className="p-1" style={{border: '1px solid black'}}>{account?.name || ''}</td>
+                        <td className="p-1 text-center" style={{border: '1px solid black'}}>{accountDetails.code || ''}</td>
+                        <td className="p-1 uppercase" style={{border: '1px solid black'}}>{accountDetails.name || ''}</td>
                         <td className="p-1 text-right" style={{border: '1px solid black'}}>{transaction.type === 'income' ? amount.toLocaleString('es-CO', { minimumFractionDigits: 2 }) : '0.00'}</td>
                         <td className="p-1 text-right" style={{border: '1px solid black'}}>{transaction.type === 'expense' ? amount.toLocaleString('es-CO', { minimumFractionDigits: 2 }) : '0.00'}</td>
                     </tr>
