@@ -1,110 +1,120 @@
-// ======================================================
-// 🔐 SYNC LOCALSTORAGE ↔ CLOUD (BLINDADO ANTI-BORRADO)
-// ======================================================
+// src/syncLocalStorage.js
+const API_GET = "/api/getSnapshot";
+const API_SAVE = "/api/saveSnapshot";
+const SESSION_FLAG = "app_boot_completed";
 
-const SNAPSHOT_KEY = "companies";              // clave exacta donde guardas las empresas
-const SNAPSHOT_URL = "/api/sync";              // endpoint vercel
-const SYNC_INTERVAL = 10000;                   // 10 segundos
+// lee todo localStorage y devuelve objeto { key: value }
+function readAllLocalStorage() {
+  const out = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    try {
+      out[k] = JSON.parse(localStorage.getItem(k));
+    } catch {
+      out[k] = localStorage.getItem(k);
+    }
+  }
+  return out;
+}
 
-// ======================================================
-// 🧩 Leer snapshot local de forma segura
-// ======================================================
-function loadLocalSnapshot() {
-  try {
-    const raw = localStorage.getItem(SNAPSHOT_KEY);
-    if (!raw) return [];
-
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
-  } catch {
-    return [];
+// reemplaza localStorage con objeto dado (borra primero)
+function writeAllLocalStorage(obj) {
+  localStorage.clear();
+  if (!obj) return;
+  for (const k of Object.keys(obj)) {
+    try {
+      localStorage.setItem(k, JSON.stringify(obj[k]));
+    } catch {
+      localStorage.setItem(k, String(obj[k]));
+    }
   }
 }
 
-// ======================================================
-// 🌩 Obtener snapshot desde el servidor
-// ======================================================
-async function fetchRemoteSnapshot() {
-  try {
-    const response = await fetch(SNAPSHOT_URL);
-    const data = await response.json();
-
-    return Array.isArray(data.companies) ? data.companies : [];
-  } catch {
-    return [];
-  }
-}
-
-// ======================================================
-// 🧠 Blindaje mayor: reglas de seguridad
-// ======================================================
-// ❌ Si local está vacío → No subir
-// ❌ Si local tiene MENOS empresas que remoto → No subir
-// ❌ Si remoto está vacío → No sobrescribir local
-// ❌ Si remoto tiene MENOS empresas → No restaurar
-// ======================================================
-
-async function safeSyncToServer() {
-  const local = loadLocalSnapshot();
-  const remote = await fetchRemoteSnapshot();
-
-  // 1) Local vacío → NO subir
-  if (local.length === 0) {
-    console.warn("⛔ No sync — companies local está vacío");
-    return;
-  }
-
-  // 2) Remoto tiene MÁS empresas que local → NO subir
-  if (remote.length > local.length) {
-    console.warn(`⛔ No sync — remoto (${remote.length}) > local (${local.length}). Blindaje activo.`);
-    return;
-  }
-
-  // ======================================================
-  // 🟢 AUTORIZADO PARA SINCRONIZAR
-  // ======================================================
-  const body = { companies: local };
-
-  await fetch(SNAPSHOT_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }).catch(() => {});
-
-  console.log("☁ Snapshot sincronizado (seguro)");
-}
-
-// ======================================================
-// ☁ Restaurar localStorage desde la nube AL INICIAR
-// ======================================================
+// 1) Restaurar desde la nube SOLO la primera vez al abrir (sessionStorage distingue reload)
 export async function restoreFromCloud() {
-  const remote = await fetchRemoteSnapshot();
-  const local = loadLocalSnapshot();
+  const booted = sessionStorage.getItem(SESSION_FLAG);
+  if (booted) return;
 
-  // 1) Remoto vacío → NO borrar local
-  if (!remote || remote.length === 0) {
-    console.warn("⚠ Snapshot remoto vacío — NO se sobrescribe local (blindado)");
-    return;
+  try {
+    const res = await fetch(API_GET, { cache: "no-store" });
+    if (!res.ok) {
+      sessionStorage.setItem(SESSION_FLAG, "true");
+      return;
+    }
+
+    const json = await res.json();
+    if (!json.ok) {
+      sessionStorage.setItem(SESSION_FLAG, "true");
+      return;
+    }
+
+    if (json.data && typeof json.data === "object") {
+      writeAllLocalStorage(json.data);
+    }
+
+    sessionStorage.setItem(SESSION_FLAG, "true");
+  } catch (err) {
+    console.warn("restoreFromCloud failed", err);
+    sessionStorage.setItem(SESSION_FLAG, "true");
   }
-
-  // 2) Remoto tiene menos empresas → NO restaurar
-  if (remote.length < local.length) {
-    console.warn(`⛔ No restaurado — remoto (${remote.length}) < local (${local.length}). Blindaje activo.`);
-    return;
-  }
-
-  // 🟢 Restauración válida
-  localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(remote));
-  console.log("☁ LocalStorage restaurado desde la nube (blindado)");
 }
 
-// ======================================================
-// 🔄 AutoSync cada X segundos
-// ======================================================
-export function startAutoSync() {
-  console.log("🔄 AutoSync iniciado (cada 10s, blindado)");
+// push a la nube: usa sendBeacon si es posible para seguridad en unload; fallback fetch keepalive
+async function pushSnapshot(snapshot) {
+  try {
+    const body = JSON.stringify(snapshot);
 
-  setInterval(async () => {
-    await safeSyncToServer();
-  }, SYNC_INTERVAL);
+    // prefer sendBeacon for reliability on unload
+    if (navigator.sendBeacon) {
+      const ok = navigator.sendBeacon(API_SAVE, body);
+      if (ok) return;
+      // if sendBeacon failed fall through to fetch
+    }
+
+    // fetch with keepalive
+    await fetch(API_SAVE, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      keepalive: true,
+    });
+  } catch (err) {
+    console.warn("pushSnapshot failed", err);
+  }
+}
+
+let debounceTimer = null;
+function schedulePush(snapshot) {
+  if (debounceTimer) clearTimeout(debounceTimer);
+  // ultra-rapid debounce to batch extremely fast consecutive writes (50 ms)
+  debounceTimer = setTimeout(() => {
+    pushSnapshot(snapshot);
+    debounceTimer = null;
+  }, 50);
+}
+
+// 2) Interceptar setItem para detectar cambios locales y subirlos
+export function startAutoSync() {
+  // inicial lastState
+  let lastState = JSON.stringify(readAllLocalStorage());
+
+  // override setItem to trigger push
+  const originalSet = Storage.prototype.setItem;
+  Storage.prototype.setItem = function (key, value) {
+    originalSet.apply(this, [key, value]);
+    const current = JSON.stringify(readAllLocalStorage());
+    if (current !== lastState) {
+      lastState = current;
+      try {
+        schedulePush(JSON.parse(current));
+      } catch {
+        schedulePush({ raw: current });
+      }
+    }
+  };
+
+  // listen to storage events from other tabs (keeps lastState consistent)
+  window.addEventListener("storage", () => {
+    lastState = JSON.stringify(readAllLocalStorage());
+  });
 }
