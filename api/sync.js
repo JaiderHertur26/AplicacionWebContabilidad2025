@@ -3,6 +3,9 @@ import { Redis } from "@upstash/redis";
 
 export const config = { runtime: "edge" };
 
+// Límite máximo recomendado por Upstash (1 MB)
+const MAX_SNAPSHOT_SIZE = 950_000; // bytes
+
 export default async function handler(req) {
   try {
     const redis = new Redis({
@@ -18,13 +21,20 @@ export default async function handler(req) {
     if (method === "POST") {
       let body = {};
 
+      // Proteger si el body no es JSON válido
       try {
         body = await req.json();
       } catch {
-        body = {};
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: "Error: Body inválido o vacío",
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
       }
 
-      // ❗ BLINDAJE: no permitir guardar snapshots vacíos
+      // Blindaje: detectar snapshot vacío
       if (
         !body ||
         !body.companies ||
@@ -41,11 +51,21 @@ export default async function handler(req) {
         );
       }
 
-      // Guardar snapshot seguro
-      await redis.set(
-        "localstorage_snapshot",
-        JSON.stringify({ companies: body.companies })
-      );
+      // Blindaje extra: no exceder límite de Upstash (1 MB)
+      const jsonSnapshot = JSON.stringify({ companies: body.companies });
+      if (jsonSnapshot.length > MAX_SNAPSHOT_SIZE) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error:
+              "Snapshot demasiado grande. Reduce datos antes de sincronizar.",
+          }),
+          { status: 413, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      // Guardar snapshot
+      await redis.set("localstorage_snapshot", jsonSnapshot);
 
       return new Response(
         JSON.stringify({
@@ -57,7 +77,7 @@ export default async function handler(req) {
     }
 
     // ============================================
-    // 📌 GET → Leer snapshot
+    // 📌 GET → Leer snapshot (BLINDADO)
     // ============================================
     if (method === "GET") {
       const raw = await redis.get("localstorage_snapshot");
@@ -66,7 +86,7 @@ export default async function handler(req) {
       try {
         data = raw ? JSON.parse(raw) : {};
       } catch {
-        data = {}; // BLINDAJE: si está corrupto → no romper cliente
+        data = {}; // Snapshot corrupto → no romper cliente
       }
 
       return new Response(JSON.stringify(data), {
@@ -76,7 +96,7 @@ export default async function handler(req) {
     }
 
     // ============================================
-    // 📌 Otros métodos NO permitidos
+    // 📌 Métodos no permitidos
     // ============================================
     return new Response(
       JSON.stringify({ error: "Método no permitido" }),
@@ -85,11 +105,11 @@ export default async function handler(req) {
 
   } catch (e) {
     return new Response(
-      JSON.stringify({ error: e.message }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
+      JSON.stringify({
+        ok: false,
+        error: "Error interno en sincronización: " + e.message,
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }
