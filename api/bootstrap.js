@@ -3,14 +3,9 @@ import { redis } from "@/lib/redis";
 
 export default async function handler(req, res) {
   try {
-    let state = await redis.get("APP_STATE");
-    if (!state) state = {};
-
-    res.status(200).json({
-      ok: true,
-      data: state
-    });
+    const allData = await redis.hgetall("APP_DATA_2025") || {};
+    return res.status(200).json({ ok: true, data: allData });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    return res.status(500).json({ ok: false, error: e.message });
   }
 }

@@ -23,15 +23,14 @@ function writeLocal(data) {
 // 1. LECTURA INICIAL DESDE LA NUBE (SOLO UNA VEZ)
 // =====================================================
 export async function bootstrapIfNeeded() {
-  // Si ya se hizo una vez, NO consulta la nube otra vez
   if (localStorage.getItem(BOOTSTRAP_FLAG) === "YES") return;
 
   const r = await fetch("/api/bootstrap");
   const j = await r.json();
 
   if (j && j.data) {
-    writeLocal(j.data);               // Actualiza localStorage
-    localStorage.setItem(BOOTSTRAP_FLAG, "YES"); // Marca bootstrap
+    writeLocal(j.data);
+    localStorage.setItem(BOOTSTRAP_FLAG, "YES");
   }
 }
 
@@ -41,12 +40,10 @@ export async function bootstrapIfNeeded() {
 export function pushChange(change) {
   const id = uuid();
 
-  // Actualiza local
   const local = readLocal();
   const updated = { ...local, ...change };
   writeLocal(updated);
 
-  // Envía solo el cambio nuevo a la nube (incremental)
   fetch("/api/push-change", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -55,9 +52,9 @@ export function pushChange(change) {
 }
 
 // =====================================================
-// 3. SINCRONIZACIÓN MANUAL DESDE EL STREAM (opcional)
+// 3. SINCRONIZACIÓN DESDE LA NUBE
 // =====================================================
-export async function syncFromStream() {
+export async function syncFromServer() {
   const r = await fetch("/api/sync");
   const j = await r.json();
   if (!j.items) return;
