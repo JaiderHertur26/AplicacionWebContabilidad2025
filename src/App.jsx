@@ -22,12 +22,20 @@ import { Toaster } from '@/components/ui/toaster';
 import { useCompanyData } from '@/hooks/useCompanyData';
 import { CompanyContext, useCompany } from '@/contexts/CompanyContext';
 
-// *** IMPORTANTE ***
-import { initLocalSync } from '@/lib/localSync';
-
-// Re-export useCompany for backward compatibility
 export { useCompany };
 
+// ⬇️ ⬇️ ⬇️ IMPORTA TODAS LAS FUNCIONES DE SINCRONIZACIÓN
+import {
+  bootstrapIfNeeded,
+  startCloudWatcher,
+  stopCloudWatcher
+} from "@/lib/localSync";
+// ⬆️ ⬆️ ⬆️
+
+
+// ------------------------------
+//   InitialAccountsSetup
+// ------------------------------
 const InitialAccountsSetup = ({ children }) => {
   const { activeCompany } = useCompany();
   const [accounts, saveAccounts, isAccountsLoaded] = useCompanyData('accounts');
@@ -43,12 +51,12 @@ const InitialAccountsSetup = ({ children }) => {
       ];
 
       if (accounts.length === 0) {
-          const newAccounts = requiredAccounts.map(reqAcc => ({
-            id: `${Date.now()}-${reqAcc.number}`,
-            number: reqAcc.number,
-            name: reqAcc.name,
-          }));
-          saveAccounts(newAccounts.sort((a, b) => a.number.localeCompare(b.number)));
+        const newAccounts = requiredAccounts.map(reqAcc => ({
+          id: `${Date.now()}-${reqAcc.number}`,
+          number: reqAcc.number,
+          name: reqAcc.name,
+        }));
+        saveAccounts(newAccounts.sort((a, b) => a.number.localeCompare(b.number)));
       }
     }
   }, [activeCompany, accounts, saveAccounts, isAccountsLoaded]);
@@ -57,21 +65,37 @@ const InitialAccountsSetup = ({ children }) => {
 };
 
 
+// ------------------------------
+//             APP
+// ------------------------------
 function App() {
 
   // -------------------------------------------------------------
-  // 🚀 SINCRONIZACIÓN GLOBAL DESDE UPSTASH ANTES DE TODO
+  // 🚀 BOOTSTRAP + WATCHER GLOBAL (PASOS 4, 7 Y 8)
   // -------------------------------------------------------------
   useEffect(() => {
-    async function bootstrap() {
+    let mounted = true;
+
+    async function bootAndWatch() {
       try {
-        await initLocalSync(); // <<--- AQUÍ SINCRONIZAMOS
-        console.log("Bootstrap completado desde Redis.");
+        await bootstrapIfNeeded();   // carga inicial desde Upstash si es necesario
+        if (!mounted) return;
+
+        // Iniciar monitor de cambios desde la nube
+        startCloudWatcher(2000); // cada 2s revisa cambios nuevos (puedes bajar a 1000ms)
+
+        console.log("Bootstrap completado y watcher iniciado.");
       } catch (err) {
         console.error("Error durante bootstrap inicial:", err);
       }
     }
-    bootstrap();
+
+    bootAndWatch();
+
+    return () => {
+      mounted = false;
+      try { stopCloudWatcher(); } catch {}
+    };
   }, []);
   // -------------------------------------------------------------
 
@@ -80,7 +104,7 @@ function App() {
   const [activeCompany, setActiveCompany] = useState(null);
   const [companies, setCompanies] = useState([]);
   const [isGeneralAdmin, setIsGeneralAdmin] = useState(false);
-  const [accessLevel, setAccessLevel] = useState('full'); 
+  const [accessLevel, setAccessLevel] = useState('full');
   const [isConsolidated, setIsConsolidated] = useState(false);
 
   // Cargar sesión
@@ -123,17 +147,18 @@ function App() {
     localStorage.setItem('auth_access_level', level);
 
     if (loginData.isGeneralAdmin) {
-        setIsGeneralAdmin(true);
-        setActiveCompany(null);
-        localStorage.setItem('auth_session', 'general_admin');
+      setIsGeneralAdmin(true);
+      setActiveCompany(null);
+      localStorage.setItem('auth_session', 'general_admin');
     } else {
-        setIsGeneralAdmin(false);
-        setActiveCompany(loginData.company);
-        localStorage.setItem('auth_session', loginData.company.id);
+      setIsGeneralAdmin(false);
+      setActiveCompany(loginData.company);
+      localStorage.setItem('auth_session', loginData.company.id);
 
-        setIsConsolidated(false);
-        localStorage.removeItem(`${loginData.company.id}-consolidate`);
+      setIsConsolidated(false);
+      localStorage.removeItem(`${loginData.company.id}-consolidate`);
     }
+
     const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
     setCompanies(storedCompanies);
   };
@@ -153,7 +178,7 @@ function App() {
     setIsConsolidated(value);
     localStorage.setItem(`${activeCompany.id}-consolidate`, String(value));
   };
-  
+
   const companyContextValue = {
     activeCompany,
     companies,
@@ -171,7 +196,7 @@ function App() {
           <Route path="/" element={isGeneralAdmin ? <Navigate to="/companies" /> : <Dashboard />} />
           <Route path="/companies" element={<Companies />} />
           <Route path="/settings" element={<Settings />} />
-          
+
           <Route path="/organization" element={!isGeneralAdmin ? <Organization /> : <Navigate to="/companies" />} />
 
           <Route path="/transactions" element={!isGeneralAdmin ? <Transactions /> : <Navigate to="/companies" />} />
@@ -185,7 +210,7 @@ function App() {
           <Route path="/book-closings" element={!isGeneralAdmin ? <BookClosings /> : <Navigate to="/companies" />} />
           <Route path="/accounts-receivable" element={!isGeneralAdmin ? <AccountsReceivable /> : <Navigate to="/companies" />} />
           <Route path="/accounts-payable" element={!isGeneralAdmin ? <AccountsPayable /> : <Navigate to="/companies" />} />
-          
+
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </InitialAccountsSetup>
@@ -198,9 +223,11 @@ function App() {
         <title>JaiderHerTur26 - Sistema de Contabilidad</title>
         <meta name="description" content="Gestiona tu contabilidad de forma profesional con JaiderHerTur26." />
       </Helmet>
+
       <CompanyContext.Provider value={companyContextValue}>
         <Router>
           <Toaster />
+
           {!isAuthenticated ? (
             <Routes>
               <Route path="/login" element={<Login onLogin={handleLogin} />} />

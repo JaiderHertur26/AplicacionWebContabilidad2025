@@ -1,32 +1,19 @@
-// api/bootstrap.js
-import { Redis } from "@upstash/redis";
-
-/**
- * GET /api/bootstrap
- * Devuelve { ok: true, snapshot: { timestamp, data } } o snapshot: null
- *
- * Requiere las env vars:
- * UPSTASH_REDIS_REST_URL
- * UPSTASH_REDIS_REST_TOKEN
- */
-
-const redis = Redis.fromEnv();
+// /api/bootstrap.js
+import { redis } from "../src/lib/redis.js";
 
 export default async function handler(req, res) {
   try {
-    if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method not allowed" });
+    const snapshot = await redis.get("APP_DATA_2025");
 
-    const raw = await redis.get("APP_LOCALSTORAGE_2025");
-
-    if (!raw) {
-      return res.status(200).json({ ok: true, snapshot: null });
-    }
-
-    const snapshot = typeof raw === "string" ? JSON.parse(raw) : raw;
-
-    return res.status(200).json({ ok: true, snapshot });
+    res.status(200).json({
+      ok: true,
+      snapshot: snapshot || null
+    });
   } catch (err) {
     console.error("bootstrap error:", err);
-    return res.status(500).json({ ok: false, error: String(err?.message || err) });
+    res.status(500).json({
+      ok: false,
+      error: "bootstrap_error",
+    });
   }
 }
