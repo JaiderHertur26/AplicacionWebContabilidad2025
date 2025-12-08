@@ -1,13 +1,10 @@
-// /src/lib/localSync.js
-import { v4 as uuid } from "uuid";
-
+// src/lib/localSync.js
 const STORAGE_KEY = "APP_DATA_2025";
 const BOOTSTRAP_FLAG = "BOOTSTRAP_DONE";
 
-// =======================
-// Utilidades LocalStorage
-// =======================
-function readLocal() {
+/** lee localStorage (objeto) */
+export function readLocal() {
+  if (typeof window === "undefined") return {};
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
   } catch {
@@ -15,58 +12,46 @@ function readLocal() {
   }
 }
 
-function writeLocal(data) {
+/** escribe localStorage con objeto (sobrescribe) */
+export function writeLocal(data) {
+  if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
-// =====================================================
-// 1. LECTURA INICIAL DESDE LA NUBE (SOLO UNA VEZ)
-// =====================================================
+/**
+ * bootstrapIfNeeded()
+ * - Si BOOTSTRAP_DONE === "YES" => no hace nada.
+ * - Si no, pide GET /api/bootstrap, reemplaza localStorage con snapshot.data y marca BOOTSTRAP_DONE.
+ */
 export async function bootstrapIfNeeded() {
-  if (localStorage.getItem(BOOTSTRAP_FLAG) === "YES") return;
+  if (typeof window === "undefined") return;
+  try {
+    if (localStorage.getItem(BOOTSTRAP_FLAG) === "YES") return;
 
-  const r = await fetch("/api/bootstrap");
-  const j = await r.json();
+    const resp = await fetch("/api/bootstrap", { method: "GET", cache: "no-store" });
+    if (!resp.ok) {
+      console.warn("bootstrap: server returned", resp.status);
+      return;
+    }
 
-  if (j && j.data) {
-    writeLocal(j.data);
+    const json = await resp.json();
+    if (!json || !json.ok) {
+      console.warn("bootstrap: invalid response", json);
+      return;
+    }
+
+    if (!json.snapshot) {
+      writeLocal({});
+      localStorage.setItem(BOOTSTRAP_FLAG, "YES");
+      return;
+    }
+
+    const { snapshot } = json;
+
+    writeLocal(snapshot.data || {});
     localStorage.setItem(BOOTSTRAP_FLAG, "YES");
+    localStorage.setItem("APP_LAST_BOOTSTRAP_TS", String(snapshot.timestamp || Date.now()));
+  } catch (err) {
+    console.error("bootstrapIfNeeded error:", err);
   }
-}
-
-// =====================================================
-// 2. SUBIR CAMBIO A LOCAL Y A LA NUBE
-// =====================================================
-export function pushChange(change) {
-  const id = uuid();
-
-  const local = readLocal();
-  const updated = { ...local, ...change };
-  writeLocal(updated);
-
-  fetch("/api/push-change", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id, change })
-  });
-}
-
-// =====================================================
-// 3. SINCRONIZACIÓN DESDE LA NUBE
-// =====================================================
-export async function syncFromServer() {
-  const r = await fetch("/api/sync");
-  const j = await r.json();
-  if (!j.items) return;
-
-  let local = readLocal();
-
-  j.items.forEach(i => {
-    try {
-      const c = JSON.parse(i[1].change);
-      local = { ...local, ...c };
-    } catch {}
-  });
-
-  writeLocal(local);
 }
