@@ -17,21 +17,18 @@ const CHANGE_PREFIX = "change_v1:";
 const LOCAL_STORAGE_BOOTSTRAP_FLAG = "bootstrapped_v1";
 const LOCAL_LAST_CHANGE_INDEX = "local_last_change_index_v1";
 
-/* ====== util (fetch helpers) ====== */
+/* ====== Fetch helpers ====== */
 async function fetchJSON(url, options = {}) {
-  const headers = options.headers ? { ...options.headers } : {};
-  headers.Authorization = `Bearer ${UPSTASH_TOKEN}`;
+  const headers = { ...options.headers, Authorization: `Bearer ${UPSTASH_TOKEN}` };
   const resp = await fetch(url, { ...options, headers });
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
-    const err = new Error(`HTTP ${resp.status} - ${text}`);
-    err.status = resp.status;
-    throw err;
+    throw new Error(`HTTP ${resp.status} - ${text}`);
   }
   return resp.json();
 }
 
-/* ====== Cloud read/write (adaptado a Upstash HTTP) ====== */
+/* ====== Upstash GET/SET adaptado ====== */
 async function readCloudKey(key) {
   const url = `${UPSTASH_URL}/GET/${encodeURIComponent(key)}`;
   try {
@@ -44,12 +41,17 @@ async function readCloudKey(key) {
 }
 
 async function writeCloudKey(key, value) {
+  // Upstash expects {"key": "...", "value": "..."} for POST /SET
+  const url = `${UPSTASH_URL}/SET`;
   try {
-    const valStr = encodeURIComponent(typeof value === "string" ? value : JSON.stringify(value));
-    const url = `${UPSTASH_URL}/SET/${encodeURIComponent(key)}/${valStr}`;
+    const body = JSON.stringify({ key, value });
     const resp = await fetch(url, {
       method: "POST",
-      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+      headers: {
+        Authorization: `Bearer ${UPSTASH_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body,
     });
     if (!resp.ok) {
       const text = await resp.text().catch(() => "");
@@ -62,7 +64,7 @@ async function writeCloudKey(key, value) {
   }
 }
 
-/* ====== Local read/write helper ====== */
+/* ====== Local read/write ====== */
 export function readLocalSnapshot() {
   try {
     const raw = localStorage.getItem("APP_DATA_2025");
@@ -83,63 +85,33 @@ export function writeLocalSnapshot(obj) {
 /* ====== Bootstrap ====== */
 export async function bootstrapIfNeeded() {
   try {
-    if (localStorage.getItem(LOCAL_STORAGE_BOOTSTRAP_FLAG) === "yes") {
-      const idx = await readCloudKey(CHANGES_INDEX_KEY);
-      if (idx) {
-        try {
-          const arr = JSON.parse(idx);
-          localStorage.setItem(LOCAL_LAST_CHANGE_INDEX, String(arr.length));
-        } catch {}
-      }
-      console.log("Bootstrap ya realizado.");
-      return;
-    }
-
     const snapRaw = await readCloudKey(SNAPSHOT_KEY);
+    let snapshotData = {};
+
     if (snapRaw) {
-      let snapObj = null;
-      try { snapObj = typeof snapRaw === "string" ? JSON.parse(snapRaw) : snapRaw; } catch { snapObj = snapRaw; }
-      if (snapObj && typeof snapObj === "object") {
-        Object.keys(snapObj).forEach(k => {
-          try { localStorage.setItem(k, JSON.stringify(snapObj[k])); } catch {}
-        });
-      }
+      snapshotData = typeof snapRaw === "string" ? JSON.parse(snapRaw) : snapRaw;
     } else {
       const idxRaw = await readCloudKey(CHANGES_INDEX_KEY);
       if (idxRaw) {
-        let idxArr = [];
-        try { idxArr = typeof idxRaw === "string" ? JSON.parse(idxRaw) : idxRaw; } catch {}
-        for (let i = 0; i < idxArr.length; i++) {
-          const id = idxArr[i];
+        let idxArr = typeof idxRaw === "string" ? JSON.parse(idxRaw) : idxRaw;
+        for (let id of idxArr) {
           const changeRaw = await readCloudKey(CHANGE_PREFIX + id);
           if (!changeRaw) continue;
-          let changeObj = null;
-          try { changeObj = typeof changeRaw === "string" ? JSON.parse(changeRaw) : changeRaw; } catch {}
-          if (changeObj && typeof changeObj === "object") {
-            Object.keys(changeObj).forEach(k => {
-              try { localStorage.setItem(k, JSON.stringify(changeObj[k])); } catch {}
-            });
-          }
+          let changeObj = typeof changeRaw === "string" ? JSON.parse(changeRaw) : changeRaw;
+          snapshotData = { ...snapshotData, ...changeObj };
         }
       }
     }
 
+    // Escribir snapshot completo en key central
+    writeLocalSnapshot(snapshotData);
     localStorage.setItem(LOCAL_STORAGE_BOOTSTRAP_FLAG, "yes");
+    localStorage.setItem(LOCAL_LAST_CHANGE_INDEX, "0");
 
-    const idxNowRaw = await readCloudKey(CHANGES_INDEX_KEY);
-    if (idxNowRaw) {
-      try {
-        const arrNow = typeof idxNowRaw === "string" ? JSON.parse(idxNowRaw) : idxNowRaw;
-        localStorage.setItem(LOCAL_LAST_CHANGE_INDEX, String(arrNow.length || 0));
-      } catch {
-        localStorage.setItem(LOCAL_LAST_CHANGE_INDEX, "0");
-      }
-    } else {
-      localStorage.setItem(LOCAL_LAST_CHANGE_INDEX, "0");
-    }
+    // Aplicar cambios recientes inmediatamente
+    await fetchAndApplyNewCloudChanges();
 
-    console.log("Bootstrap completado.");
-    return;
+    console.log("Bootstrap completado y cambios aplicados");
   } catch (err) {
     console.error("bootstrapIfNeeded error", err);
   }
@@ -151,7 +123,11 @@ export async function uploadLocalSnapshot() {
     const snapshot = {};
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      try { snapshot[key] = JSON.parse(localStorage.getItem(key)); } catch { snapshot[key] = localStorage.getItem(key); }
+      try {
+        snapshot[key] = JSON.parse(localStorage.getItem(key));
+      } catch {
+        snapshot[key] = localStorage.getItem(key);
+      }
     }
     await writeCloudKey(SNAPSHOT_KEY, snapshot);
     return true;
@@ -170,15 +146,26 @@ export async function pushChangeLocalAndCloud(changeObj) {
 
     const id = `${Date.now()}-${uuidv4()}`;
     const ok1 = await writeCloudKey(CHANGE_PREFIX + id, changeObj);
-    if (!ok1) { console.warn("pushChange: failed to write change to cloud"); return false; }
+    if (!ok1) {
+      console.warn("pushChange: failed to write change to cloud");
+      return false;
+    }
 
     let idxRaw = await readCloudKey(CHANGES_INDEX_KEY);
     let idxArr = [];
-    try { idxArr = idxRaw ? (typeof idxRaw === "string" ? JSON.parse(idxRaw) : idxRaw) : []; if (!Array.isArray(idxArr)) idxArr = []; } catch { idxArr = []; }
+    try {
+      idxArr = idxRaw ? (typeof idxRaw === "string" ? JSON.parse(idxRaw) : idxRaw) : [];
+      if (!Array.isArray(idxArr)) idxArr = [];
+    } catch {
+      idxArr = [];
+    }
 
     idxArr.push(id);
     const ok2 = await writeCloudKey(CHANGES_INDEX_KEY, idxArr);
-    if (!ok2) { console.warn("pushChange: failed to update changes index"); return false; }
+    if (!ok2) {
+      console.warn("pushChange: failed to update changes index");
+      return false;
+    }
 
     const lastIdx = Number(localStorage.getItem(LOCAL_LAST_CHANGE_INDEX) || "0");
     localStorage.setItem(LOCAL_LAST_CHANGE_INDEX, String(lastIdx + 1));
@@ -195,8 +182,7 @@ export async function fetchAndApplyNewCloudChanges() {
   try {
     const idxRaw = await readCloudKey(CHANGES_INDEX_KEY);
     if (!idxRaw) return;
-    let idxArr = [];
-    try { idxArr = typeof idxRaw === "string" ? JSON.parse(idxRaw) : idxRaw; } catch { return; }
+    let idxArr = typeof idxRaw === "string" ? JSON.parse(idxRaw) : idxRaw;
     if (!Array.isArray(idxArr) || idxArr.length === 0) return;
 
     const lastLocal = Number(localStorage.getItem(LOCAL_LAST_CHANGE_INDEX) || "0");
@@ -206,8 +192,7 @@ export async function fetchAndApplyNewCloudChanges() {
       const id = idxArr[i];
       const changeRaw = await readCloudKey(CHANGE_PREFIX + id);
       if (!changeRaw) continue;
-      let changeObj = null;
-      try { changeObj = typeof changeRaw === "string" ? JSON.parse(changeRaw) : changeRaw; } catch { changeObj = changeRaw; }
+      let changeObj = typeof changeRaw === "string" ? JSON.parse(changeRaw) : changeRaw;
       if (!changeObj) continue;
 
       const currentSnapshot = readLocalSnapshot();
@@ -216,7 +201,6 @@ export async function fetchAndApplyNewCloudChanges() {
     }
 
     localStorage.setItem(LOCAL_LAST_CHANGE_INDEX, String(idxArr.length));
-    return;
   } catch (err) {
     console.error("fetchAndApplyNewCloudChanges error", err);
   }
@@ -224,15 +208,22 @@ export async function fetchAndApplyNewCloudChanges() {
 
 /* ====== Cloud watcher ====== */
 let _watcher = null;
+
 export function startCloudWatcher(intervalMs = 2000) {
   stopCloudWatcher();
-  _watcher = setInterval(() => { fetchAndApplyNewCloudChanges().catch(() => {}); }, intervalMs);
+  _watcher = setInterval(() => {
+    fetchAndApplyNewCloudChanges().catch(() => {});
+  }, intervalMs);
   fetchAndApplyNewCloudChanges().catch(() => {});
   console.log("Cloud watcher started, interval:", intervalMs);
 }
 
 export function stopCloudWatcher() {
-  if (_watcher) { clearInterval(_watcher); _watcher = null; console.log("Cloud watcher stopped"); }
+  if (_watcher) {
+    clearInterval(_watcher);
+    _watcher = null;
+    console.log("Cloud watcher stopped");
+  }
 }
 
 /* ====== Exports ====== */
@@ -247,3 +238,32 @@ const exported = {
   writeLocalSnapshot
 };
 export default exported;
+
+/* ====== AUTOMATIC SYNC LAYER ====== */
+(function () {
+  const originalSetItem = localStorage.setItem;
+  localStorage.setItem = function (key, value) {
+    originalSetItem.apply(this, arguments);
+    if (window.__localSync__?.autoPush) {
+      try {
+        window.__localSync__.autoPush(key, value);
+      } catch (err) {
+        console.warn("[localSync] Error en autoPush:", err);
+      }
+    }
+  };
+})();
+
+window.__localSync__ = {
+  autoPush: async (key, rawValue) => {
+    try {
+      let value = rawValue;
+      try { value = JSON.parse(rawValue); } catch {}
+      const change = { [key]: value };
+      await pushChangeLocalAndCloud(change);
+      console.log("[localSync] Cambio detectado y subido:", key);
+    } catch (e) {
+      console.warn("[localSync] Error enviando cambio incremental:", e);
+    }
+  }
+};
