@@ -22,7 +22,10 @@ import { Toaster } from '@/components/ui/toaster';
 import { useCompanyData } from '@/hooks/useCompanyData';
 import { CompanyContext, useCompany } from '@/contexts/CompanyContext';
 
-// Re-export useCompany for backward compatibility with other components
+// *** IMPORTANTE ***
+import { initLocalSync } from '@/lib/localSync';
+
+// Re-export useCompany for backward compatibility
 export { useCompany };
 
 const InitialAccountsSetup = ({ children }) => {
@@ -55,6 +58,24 @@ const InitialAccountsSetup = ({ children }) => {
 
 
 function App() {
+
+  // -------------------------------------------------------------
+  // 🚀 SINCRONIZACIÓN GLOBAL DESDE UPSTASH ANTES DE TODO
+  // -------------------------------------------------------------
+  useEffect(() => {
+    async function bootstrap() {
+      try {
+        await initLocalSync(); // <<--- AQUÍ SINCRONIZAMOS
+        console.log("Bootstrap completado desde Redis.");
+      } catch (err) {
+        console.error("Error durante bootstrap inicial:", err);
+      }
+    }
+    bootstrap();
+  }, []);
+  // -------------------------------------------------------------
+
+
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeCompany, setActiveCompany] = useState(null);
   const [companies, setCompanies] = useState([]);
@@ -62,6 +83,7 @@ function App() {
   const [accessLevel, setAccessLevel] = useState('full'); 
   const [isConsolidated, setIsConsolidated] = useState(false);
 
+  // Cargar sesión
   useEffect(() => {
     const session = localStorage.getItem('auth_session');
     const storedAccessLevel = localStorage.getItem('auth_access_level') || 'full';
@@ -82,9 +104,9 @@ function App() {
           setIsAuthenticated(true);
           setIsGeneralAdmin(false);
           setAccessLevel(storedAccessLevel);
-          
-          // Load consolidation preference
-          const storedConsolidation = localStorage.getItem(`${loggedInCompany.id}-consolidate`) === 'true';
+
+          const storedConsolidation =
+            localStorage.getItem(`${loggedInCompany.id}-consolidate`) === 'true';
           setIsConsolidated(storedConsolidation);
         } else {
           localStorage.removeItem('auth_session');
@@ -108,8 +130,7 @@ function App() {
         setIsGeneralAdmin(false);
         setActiveCompany(loginData.company);
         localStorage.setItem('auth_session', loginData.company.id);
-        
-        // Reset consolidation on new login
+
         setIsConsolidated(false);
         localStorage.removeItem(`${loginData.company.id}-consolidate`);
     }
