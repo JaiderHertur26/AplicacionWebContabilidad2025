@@ -159,6 +159,8 @@ export async function uploadLocalSnapshot() {
 
 /* ====== Push incremental seguro ====== */
 export async function pushChangeLocalAndCloud(changeObj) {
+  if (!changeObj || typeof changeObj !== "object") return false;
+
   try {
     // Suspender autoPush para evitar recursión
     window.__localSync__?.suspendAutoPush(true);
@@ -258,8 +260,14 @@ export function stopCloudWatcher() {
 window.__localSync__ = {
   autoPush: async (key, rawValue) => {
     try {
+      if (rawValue === undefined || rawValue === null) return;
+
       let value;
       try { value = JSON.parse(rawValue); } catch { value = rawValue; }
+
+      // Asegura que siempre sea objeto
+      if (!value || typeof value !== "object") value = { value };
+
       await pushChangeLocalAndCloud({ [key]: value });
       console.log("[localSync] Cambio detectado y subido:", key);
     } catch (e) {
