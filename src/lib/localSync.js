@@ -16,10 +16,11 @@ const CHANGE_PREFIX = "change_v1:";
 /* ====== Local keys ====== */
 const LOCAL_STORAGE_BOOTSTRAP_FLAG = "bootstrapped_v1";
 const LOCAL_LAST_CHANGE_INDEX = "local_last_change_index_v1";
+const MAX_PAYLOAD_SIZE = 5_000_000; // 5MB aprox
 
 /* ====== Utils ====== */
 async function fetchJSON(url, options = {}) {
-  const headers = options.headers ? { ...options.headers } : {};
+  const headers = { ...(options.headers || {}) };
   headers.Authorization = `Bearer ${UPSTASH_TOKEN}`;
   const resp = await fetch(url, { ...options, headers });
   if (!resp.ok) {
@@ -30,8 +31,8 @@ async function fetchJSON(url, options = {}) {
 }
 
 async function readCloudKey(key) {
-  const url = `${UPSTASH_URL}/GET/${encodeURIComponent(key)}`;
   try {
+    const url = `${UPSTASH_URL}/GET/${encodeURIComponent(key)}`;
     const json = await fetchJSON(url, { method: "GET" });
     return json.result ?? null;
   } catch (err) {
@@ -41,16 +42,21 @@ async function readCloudKey(key) {
 }
 
 async function writeCloudKey(key, value) {
-  const url = `${UPSTASH_URL}/SET/${encodeURIComponent(key)}`;
   try {
+    // Evitar referencias circulares
+    const payload = JSON.stringify({ value }, getCircularReplacer());
+    if (payload.length > MAX_PAYLOAD_SIZE) throw new Error("Payload too large for Upstash");
+
+    const url = `${UPSTASH_URL}/SET/${encodeURIComponent(key)}`;
     const resp = await fetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${UPSTASH_TOKEN}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(value),
+      body: payload,
     });
+
     if (!resp.ok) {
       const text = await resp.text().catch(() => "");
       throw new Error(`writeCloudKey HTTP ${resp.status} - ${text}`);
@@ -63,11 +69,23 @@ async function writeCloudKey(key, value) {
 }
 
 function safeParse(raw, defaultValue = {}) {
-  if (raw === undefined || raw === null) return defaultValue;
+  if (!raw) return defaultValue;
   if (typeof raw === "string") {
     try { return JSON.parse(raw); } catch { return defaultValue; }
   }
   return raw;
+}
+
+// Evita JSON.stringify infinito en referencias circulares
+function getCircularReplacer() {
+  const seen = new WeakSet();
+  return (key, value) => {
+    if (typeof value === "object" && value !== null) {
+      if (seen.has(value)) return "[Circular]";
+      seen.add(value);
+    }
+    return value;
+  };
 }
 
 /* ====== Snapshot local ====== */
@@ -75,11 +93,15 @@ export function readLocalSnapshot() {
   try {
     const raw = localStorage.getItem("APP_DATA_2025");
     return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
+  } catch {
+    return {};
+  }
 }
 
 export function writeLocalSnapshot(obj) {
-  try { localStorage.setItem("APP_DATA_2025", JSON.stringify(obj)); } catch (err) {
+  try {
+    localStorage.setItem("APP_DATA_2025", JSON.stringify(obj, getCircularReplacer()));
+  } catch (err) {
     console.error("writeLocalSnapshot error", err);
   }
 }
@@ -128,8 +150,7 @@ export async function uploadLocalSnapshot() {
       const key = localStorage.key(i);
       try { snapshot[key] = JSON.parse(localStorage.getItem(key)); } catch { snapshot[key] = localStorage.getItem(key); }
     }
-    await writeCloudKey(SNAPSHOT_KEY, snapshot);
-    return true;
+    return writeCloudKey(SNAPSHOT_KEY, snapshot);
   } catch (err) {
     console.error("uploadLocalSnapshot error", err);
     return false;
@@ -139,7 +160,17 @@ export async function uploadLocalSnapshot() {
 /* ====== Push incremental seguro ====== */
 export async function pushChangeLocalAndCloud(changeObj) {
   try {
+    // Suspender autoPush para evitar recursión
+    window.__localSync__?.suspendAutoPush(true);
+
     const currentSnapshot = readLocalSnapshot();
+
+    // Evita enviar cambios idénticos
+    const hasChanges = Object.keys(changeObj).some(
+      k => JSON.stringify(currentSnapshot[k]) !== JSON.stringify(changeObj[k])
+    );
+    if (!hasChanges) return false;
+
     const updated = { ...currentSnapshot, ...changeObj };
     writeLocalSnapshot(updated);
 
@@ -160,6 +191,8 @@ export async function pushChangeLocalAndCloud(changeObj) {
   } catch (err) {
     console.error("pushChangeLocalAndCloud error", err);
     return false;
+  } finally {
+    window.__localSync__?.suspendAutoPush(false);
   }
 }
 
@@ -199,21 +232,25 @@ export function startCloudWatcher(intervalMs = 2000) {
 }
 
 export function stopCloudWatcher() {
-  if (_watcher) { clearInterval(_watcher); _watcher = null; console.log("Cloud watcher stopped"); }
+  if (_watcher) {
+    clearInterval(_watcher);
+    _watcher = null;
+    console.log("Cloud watcher stopped");
+  }
 }
 
 /* ====== Auto sync layer (sin recursión) ====== */
 (function () {
   const originalSetItem = localStorage.setItem;
-  const updating = new Set();
+  const suspendedKeys = new Set();
 
   localStorage.setItem = function (key, value) {
     originalSetItem.apply(this, arguments);
-    if (window.__localSync__ && window.__localSync__.autoPush && !updating.has(key)) {
-      updating.add(key);
-      try {
-        window.__localSync__.autoPush(key, value).finally(() => updating.delete(key));
-      } catch (err) { console.warn("[localSync] autoPush error:", err); updating.delete(key); }
+    if (window.__localSync__?.autoPush && !suspendedKeys.has(key)) {
+      suspendedKeys.add(key);
+      window.__localSync__.autoPush(key, value)
+        .finally(() => suspendedKeys.delete(key))
+        .catch(err => console.warn("[localSync] autoPush error:", err));
     }
   };
 })();
@@ -221,14 +258,18 @@ export function stopCloudWatcher() {
 window.__localSync__ = {
   autoPush: async (key, rawValue) => {
     try {
-      let value = null;
+      let value;
       try { value = JSON.parse(rawValue); } catch { value = rawValue; }
       await pushChangeLocalAndCloud({ [key]: value });
       console.log("[localSync] Cambio detectado y subido:", key);
     } catch (e) {
       console.warn("[localSync] Error enviando cambio incremental:", e);
     }
-  }
+  },
+  suspendAutoPush(flag) {
+    this._suspended = flag;
+  },
+  _suspended: false
 };
 
 /* ====== Exports ====== */
