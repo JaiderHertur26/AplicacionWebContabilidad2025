@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 
 /* ====== CONFIG ====== */
 const UPSTASH_URL = import.meta.env.VITE_UPSTASH_URL || "https://together-grouper-32531.upstash.io";
-const UPSTASH_TOKEN = import.meta.env.VITE_UPSTASH_TOKEN || "AX8TAAIncDJhNWY4MjZjYzg0ZTI0OTBlYTFjNDUxZmQwZDE0MGE2ZHAyMzI1MzE";
+const UPSTASH_TOKEN = import.meta.env.VITE_UPSTASH_TOKEN || "AX8TAAIncDIxMTQzMmQ2ZDdlMzE0OWIwOTllNDA4ODhmNzZlNzRhMXAyMzI1MzE";
 
 /* ====== KEYS ====== */
 const SNAPSHOT_KEY = "localstorage_snapshot_v1";
@@ -16,7 +16,8 @@ const CHANGE_PREFIX = "change_v1:";
 /* ====== Local keys ====== */
 const LOCAL_STORAGE_BOOTSTRAP_FLAG = "bootstrapped_v1";
 const LOCAL_LAST_CHANGE_INDEX = "local_last_change_index_v1";
-const MAX_PAYLOAD_SIZE = 250_000; // 250 KB por push incremental (Upstash seguro)
+const MAX_PAYLOAD_SIZE = 250_000; // 250 KB por push incremental
+const MAX_CHANGES_HISTORY = 200;  // Limite de cambios en Upstash
 
 /* ====== Utils ====== */
 async function fetchJSON(url, options = {}) {
@@ -43,11 +44,10 @@ async function readCloudKey(key) {
 
 async function writeCloudKey(key, value) {
   try {
-    // Evita referencias circulares
     const payload = JSON.stringify(value, getCircularReplacer());
     if (payload.length > MAX_PAYLOAD_SIZE) {
-      console.warn("[localSync] Payload demasiado grande, se ignorará:", key);
-      return false;
+      console.warn("[localSync] Payload demasiado grande, se dividirá:", key);
+      return await writeLargePayload(key, value);
     }
 
     const url = `${UPSTASH_URL}/SET/${encodeURIComponent(key)}`;
@@ -71,6 +71,30 @@ async function writeCloudKey(key, value) {
   }
 }
 
+// Divide un objeto grande en múltiples keys Upstash
+async function writeLargePayload(keyPrefix, obj) {
+  const entries = Object.entries(obj);
+  let batch = {};
+  let batchSize = 0;
+  let batchIndex = 0;
+
+  for (const [k, v] of entries) {
+    const str = JSON.stringify({ [k]: v });
+    if (str.length + batchSize > MAX_PAYLOAD_SIZE) {
+      await writeCloudKey(`${keyPrefix}_${batchIndex}`, batch);
+      batch = {};
+      batchSize = 0;
+      batchIndex++;
+    }
+    batch[k] = v;
+    batchSize += str.length;
+  }
+  if (Object.keys(batch).length) {
+    await writeCloudKey(`${keyPrefix}_${batchIndex}`, batch);
+  }
+  return true;
+}
+
 function safeParse(raw, defaultValue = {}) {
   if (!raw) return defaultValue;
   if (typeof raw === "string") {
@@ -79,7 +103,6 @@ function safeParse(raw, defaultValue = {}) {
   return raw;
 }
 
-// Evita JSON.stringify infinito en referencias circulares
 function getCircularReplacer() {
   const seen = new WeakSet();
   return (key, value) => {
@@ -122,8 +145,8 @@ export async function bootstrapIfNeeded() {
 
     const snapRaw = await readCloudKey(SNAPSHOT_KEY);
     const snapObj = safeParse(snapRaw, {});
-    Object.keys(snapObj).forEach(k => {
-      try { localStorage.setItem(k, JSON.stringify(snapObj[k])); } catch {}
+    Object.entries(snapObj).forEach(([k, v]) => {
+      try { localStorage.setItem(k, JSON.stringify(v)); } catch {}
     });
 
     const idxRaw = await readCloudKey(CHANGES_INDEX_KEY);
@@ -132,8 +155,8 @@ export async function bootstrapIfNeeded() {
       const id = idxArr[i];
       const changeRaw = await readCloudKey(CHANGE_PREFIX + id);
       const changeObj = safeParse(changeRaw, {});
-      Object.keys(changeObj).forEach(k => {
-        try { localStorage.setItem(k, JSON.stringify(changeObj[k])); } catch {}
+      Object.entries(changeObj).forEach(([k, v]) => {
+        try { localStorage.setItem(k, JSON.stringify(v)); } catch {}
       });
     }
 
@@ -145,53 +168,42 @@ export async function bootstrapIfNeeded() {
   }
 }
 
-/* ====== Upload snapshot completo ====== */
-export async function uploadLocalSnapshot() {
-  try {
-    const snapshot = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      try { snapshot[key] = JSON.parse(localStorage.getItem(key)); } catch { snapshot[key] = localStorage.getItem(key); }
-    }
-    return writeCloudKey(SNAPSHOT_KEY, snapshot);
-  } catch (err) {
-    console.error("uploadLocalSnapshot error", err);
-    return false;
+/* ====== Push incremental seguro ====== */
+async function cleanupOldChanges(idxArr) {
+  if (idxArr.length <= MAX_CHANGES_HISTORY) return idxArr;
+  const removeCount = idxArr.length - MAX_CHANGES_HISTORY;
+  for (let i = 0; i < removeCount; i++) {
+    const oldId = idxArr[i];
+    await writeCloudKey(CHANGE_PREFIX + oldId, {});
   }
+  return idxArr.slice(removeCount);
 }
 
-/* ====== Push incremental seguro ====== */
 export async function pushChangeLocalAndCloud(changeObj) {
   try {
-    // Si changeObj no es válido, ignorar
     if (!changeObj || typeof changeObj !== "object") return false;
 
-    // Suspender autoPush para evitar recursión infinita
     window.__localSync__?.suspendAutoPush(true);
 
     const snapshot = readLocalSnapshot();
-
-    // Solo enviar cambios reales
     const incremental = {};
     Object.entries(changeObj).forEach(([k, v]) => {
       if (JSON.stringify(snapshot[k]) !== JSON.stringify(v)) incremental[k] = v;
     });
     if (!Object.keys(incremental).length) return false;
 
-    // Actualizar snapshot local
     writeLocalSnapshot({ ...snapshot, ...incremental });
 
     const id = `${Date.now()}-${uuidv4()}`;
-    const ok1 = await writeCloudKey(CHANGE_PREFIX + id, incremental);
-    if (!ok1) return false;
+    await writeCloudKey(CHANGE_PREFIX + id, incremental);
 
-    const idxArr = safeParse(await readCloudKey(CHANGES_INDEX_KEY), []);
+    let idxArr = safeParse(await readCloudKey(CHANGES_INDEX_KEY), []);
     idxArr.push(id);
-    const ok2 = await writeCloudKey(CHANGES_INDEX_KEY, idxArr);
-    if (!ok2) return false;
+    idxArr = await cleanupOldChanges(idxArr);
 
-    const lastIdx = Number(localStorage.getItem(LOCAL_LAST_CHANGE_INDEX) || "0");
-    localStorage.setItem(LOCAL_LAST_CHANGE_INDEX, String(lastIdx + 1));
+    await writeCloudKey(CHANGES_INDEX_KEY, idxArr);
+
+    localStorage.setItem(LOCAL_LAST_CHANGE_INDEX, String(idxArr.length));
 
     return true;
   } catch (err) {
@@ -276,7 +288,6 @@ window.__localSync__ = {
 /* ====== Exports ====== */
 export default {
   bootstrapIfNeeded,
-  uploadLocalSnapshot,
   pushChangeLocalAndCloud,
   fetchAndApplyNewCloudChanges,
   startCloudWatcher,
