@@ -28,8 +28,12 @@ export { useCompany };
 // ⚡ Sync Hook
 import { useAppDataSync } from "@/hooks/useAppDataSync";
 
-// ⚡ Local-cloud sync (solo pushLocalChanges, lo demás se autoejecuta)
-import { pushLocalChanges } from "@/lib/localSync";
+// ⚡ Local-cloud automatic sync
+import {
+  bootstrapIfNeeded,
+  startCloudWatcher,
+  stopCloudWatcher
+} from "@/lib/localSync";
 
 
 // ------------------------------
@@ -69,6 +73,33 @@ const InitialAccountsSetup = ({ children }) => {
 // ------------------------------
 function App() {
 
+  // -------------------------------------------------------------
+  // 🚀 BOOTSTRAP + WATCHER GLOBAL
+  // -------------------------------------------------------------
+  useEffect(() => {
+    let mounted = true;
+
+    async function bootAndWatch() {
+      try {
+        await bootstrapIfNeeded();
+        if (!mounted) return;
+        startCloudWatcher(2000);
+        console.log("Bootstrap completado y watcher iniciado.");
+      } catch (err) {
+        console.error("Error durante bootstrap inicial:", err);
+      }
+    }
+
+    bootAndWatch();
+
+    return () => {
+      mounted = false;
+      stopCloudWatcher();
+    };
+  }, []);
+  // -------------------------------------------------------------
+
+
   // ----------------------------
   // ESTADOS PRINCIPALES
   // ----------------------------
@@ -91,6 +122,7 @@ function App() {
     accessLevel: { value: accessLevel, set: setAccessLevel },
     isConsolidated: { value: isConsolidated, set: setIsConsolidated }
   });
+  // -------------------------------------------------------------
 
 
   // -------------------------------------------------------------
