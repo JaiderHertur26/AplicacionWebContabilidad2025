@@ -1,295 +1,251 @@
-// /src/lib/localSync.js
-// Sincronización incremental local <-> Upstash
+// src/lib/localSync.js
+// Cliente de sincronización local <-> nube (Upstash a través de /api/sync/*)
+// Comportamiento: siempre bootstrap desde nube al inicio de sesión desde otro PC,
+// luego trabaja solo localStorage y sincroniza incrementalmente.
 
 import { v4 as uuidv4 } from "uuid";
 
-/* ===== CONFIG ===== */
-const UPSTASH_URL = import.meta.env.VITE_UPSTASH_URL || "https://together-grouper-32531.upstash.io";
-const UPSTASH_TOKEN = import.meta.env.VITE_UPSTASH_TOKEN || "AX8TAAIncDIxMTQzMmQ2ZDdlMzE0OWIwOTllNDA4ODhmNzZlNzRhMXAyMzI1MzE";
+const SNAPSHOT_KEY = "APP_DATA_2025";
+const DEVICE_KEY = "device_id_2025";
+const LOCAL_INDEX_KEY = "local_last_change_index_v1";
+const BOOTSTRAP_FLAG = "bootstrapped_v1";
 
-/* ===== KEYS ===== */
-const SNAPSHOT_KEY = "localstorage_snapshot_v1";
-const CHANGES_INDEX_KEY = "changes_index_v1";
-const CHANGE_PREFIX = "change_v1:";
+const CHANGE_PUSH_ENDPOINT = "/api/sync/appendChange";
+const GET_STATE_ENDPOINT = "/api/sync/getState";
+const GET_CHANGES_ENDPOINT = "/api/sync/getChanges";
 
-/* ===== LOCAL ===== */
-const LOCAL_STORAGE_BOOTSTRAP_FLAG = "bootstrapped_v1";
-const LOCAL_LAST_CHANGE_INDEX = "local_last_change_index_v1";
-const MAX_PAYLOAD_SIZE = 250_000;
-const MAX_CHANGES_HISTORY = 200;
+let _watcher = null;
+let _writing = false;
+let _applying = false;
+let lastWriteTs = 0;
+const WRITE_THROTTLE_MS = 50;
 
-/* ===== UTILS ===== */
-async function fetchJSON(url, options = {}) {
-  const headers = { ...(options.headers || {}) };
-  headers.Authorization = `Bearer ${UPSTASH_TOKEN}`;
-  const resp = await fetch(url, { ...options, headers });
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => "");
-    throw new Error(`HTTP ${resp.status} - ${text}`);
-  }
-  return resp.json();
+// utils
+function uuid() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2,9)}`;
 }
 
-async function readCloudKey(key) {
-  try {
-    const res = await fetch(`/api/kv/get?key=${encodeURIComponent(key)}`);
-    const json = await res.json();
-    return json.result ?? null;
-  } catch (err) {
-    console.error("readCloudKey error", key, err);
-    return null;
-  }
+function safeParse(raw, fallback = null) {
+  if (raw === null || raw === undefined) return fallback;
+  if (typeof raw !== "string") return raw;
+  try { return JSON.parse(raw); } catch { return fallback; }
 }
 
-
-async function writeCloudKey(key, value) {
-  try {
-    const res = await fetch(`/api/kv/set`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, value })
-    });
-    return res.ok;
-  } catch (err) {
-    console.error("writeCloudKey error", key, err);
-    return false;
-  }
-}
-
-
-// Divide objetos grandes en partes
-async function writeLargePayload(keyPrefix, obj) {
-  const entries = Object.entries(obj);
-  let batch = {};
-  let batchSize = 0;
-  let batchIndex = 0;
-
-  for (const [k, v] of entries) {
-    const str = JSON.stringify({ [k]: v });
-    if (str.length + batchSize > MAX_PAYLOAD_SIZE) {
-      await writeCloudKey(`${keyPrefix}_${batchIndex}`, batch);
-      batch = {};
-      batchSize = 0;
-      batchIndex++;
-    }
-    batch[k] = v;
-    batchSize += str.length;
-  }
-
-  if (Object.keys(batch).length) {
-    await writeCloudKey(`${keyPrefix}_${batchIndex}`, batch);
-  }
-
-  return true;
-}
-
-function safeParse(raw, defaultValue = {}) {
-  if (!raw) return defaultValue;
-  if (typeof raw === "string") {
-    try { return JSON.parse(raw); } catch { return defaultValue; }
-  }
-  return raw;
-}
-
-function getCircularReplacer() {
-  const seen = new WeakSet();
-  return (key, value) => {
-    if (typeof value === "object" && value !== null) {
-      if (seen.has(value)) return "[Circular]";
-      seen.add(value);
-    }
-    return value;
-  };
-}
-
-/* ===== LOCAL SNAPSHOT ===== */
 export function readLocalSnapshot() {
   try {
-    const raw = localStorage.getItem("APP_DATA_2025");
+    const raw = localStorage.getItem(SNAPSHOT_KEY);
     return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
+  } catch (e) { return {}; }
 }
 
 export function writeLocalSnapshot(obj) {
   try {
-    window.__localSync__.suspendAutoPush(true); // ← bloqueo recursión
-    localStorage.setItem("APP_DATA_2025", JSON.stringify(obj, getCircularReplacer()));
-  } catch (err) {
-    console.error("writeLocalSnapshot error", err);
+    window.__localSync__?.suspendAutoPush(true);
+    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(obj));
+  } catch (e) {
+    console.error("writeLocalSnapshot error", e);
   } finally {
-    window.__localSync__.suspendAutoPush(false);
+    window.__localSync__?.suspendAutoPush(false);
   }
 }
 
-/* ===== BOOTSTRAP ===== */
-export async function bootstrapIfNeeded() {
-  try {
-    if (localStorage.getItem(LOCAL_STORAGE_BOOTSTRAP_FLAG) === "yes") {
-      const idxArr = safeParse(await readCloudKey(CHANGES_INDEX_KEY), []);
-      localStorage.setItem(LOCAL_LAST_CHANGE_INDEX, String(idxArr.length || 0));
-      console.log("Bootstrap ya realizado.");
-      return;
-    }
-
-    const snapObj = safeParse(await readCloudKey(SNAPSHOT_KEY), {});
-    Object.entries(snapObj).forEach(([k, v]) => {
-      try { localStorage.setItem(k, JSON.stringify(v)); } catch {}
-    });
-
-    const idxArr = safeParse(await readCloudKey(CHANGES_INDEX_KEY), []);
-    for (const id of idxArr) {
-      const changeObj = safeParse(await readCloudKey(CHANGE_PREFIX + id), {});
-      Object.entries(changeObj).forEach(([k, v]) => {
-        try { localStorage.setItem(k, JSON.stringify(v)); } catch {}
-      });
-    }
-
-    localStorage.setItem(LOCAL_STORAGE_BOOTSTRAP_FLAG, "yes");
-    localStorage.setItem(LOCAL_LAST_CHANGE_INDEX, String(idxArr.length || 0));
-    console.log("Bootstrap completado.");
-  } catch (err) { console.error("bootstrapIfNeeded error", err); }
-}
-
-/* ===== LIMPIEZA ===== */
-async function cleanupOldChanges(idxArr) {
-  if (idxArr.length <= MAX_CHANGES_HISTORY) return idxArr;
-  const removeCount = idxArr.length - MAX_CHANGES_HISTORY;
-
-  for (let i = 0; i < removeCount; i++) {
-    const oldId = idxArr[i];
-    await writeCloudKey(CHANGE_PREFIX + oldId, {});
+function ensureDeviceId() {
+  let id = localStorage.getItem(DEVICE_KEY);
+  if (!id) {
+    id = uuid();
+    localStorage.setItem(DEVICE_KEY, id);
   }
-
-  return idxArr.slice(removeCount);
+  return id;
 }
 
-/* ===== PUSH INCREMENTAL ===== */
+function getLocalIndex() {
+  const v = localStorage.getItem(LOCAL_INDEX_KEY);
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+function setLocalIndex(n) {
+  localStorage.setItem(LOCAL_INDEX_KEY, String(n));
+}
+
+// API helpers
+async function apiGet(endpoint, qs = "") {
+  const url = endpoint + (qs ? "?" + qs : "");
+  const r = await fetch(url, { cache: "no-cache" });
+  return r.json();
+}
+async function apiPost(endpoint, body) {
+  const r = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+// PUSH incremental (client)
 export async function pushChangeLocalAndCloud(changeObj) {
+  if (!changeObj || typeof changeObj !== "object") return false;
+  const now = Date.now();
+  if (now - lastWriteTs < WRITE_THROTTLE_MS) return false;
+  lastWriteTs = now;
+  if (_applying) return false; // don't write while applying incoming changes
+  _writing = true;
   try {
-    if (!changeObj || typeof changeObj !== "object") return false;
-
-    window.__localSync__.suspendAutoPush(true);
-
+    // compute incremental vs snapshot
     const snapshot = readLocalSnapshot();
     const incremental = {};
-
     Object.entries(changeObj).forEach(([k, v]) => {
-      if (JSON.stringify(snapshot[k]) !== JSON.stringify(v)) {
-        incremental[k] = v;
-      }
+      if (JSON.stringify(snapshot[k]) !== JSON.stringify(v)) incremental[k] = v;
     });
-
     if (!Object.keys(incremental).length) return false;
 
+    // update snapshot locally
     writeLocalSnapshot({ ...snapshot, ...incremental });
 
-    const id = `${Date.now()}-${uuidv4()}`;
-    await writeCloudKey(CHANGE_PREFIX + id, incremental);
-
-    let idxArr = safeParse(await readCloudKey(CHANGES_INDEX_KEY), []);
-    idxArr.push(id);
-    idxArr = await cleanupOldChanges(idxArr);
-    await writeCloudKey(CHANGES_INDEX_KEY, idxArr);
-
-    localStorage.setItem(LOCAL_LAST_CHANGE_INDEX, String(idxArr.length));
-
-    return true;
-
-  } catch (err) {
-    console.error("pushChangeLocalAndCloud error", err);
-    return false;
-
-  } finally {
-    window.__localSync__.suspendAutoPush(false);
-  }
-}
-
-/* ===== DESCARGA DE CAMBIOS ===== */
-export async function fetchAndApplyNewCloudChanges() {
-  try {
-    const idxArr = safeParse(await readCloudKey(CHANGES_INDEX_KEY), []);
-    if (!Array.isArray(idxArr) || !idxArr.length) return;
-
-    const lastLocal = Number(localStorage.getItem(LOCAL_LAST_CHANGE_INDEX) || "0");
-    if (lastLocal >= idxArr.length) return;
-
-    for (let i = lastLocal; i < idxArr.length; i++) {
-      const id = idxArr[i];
-      const changeObj = safeParse(await readCloudKey(CHANGE_PREFIX + id), {});
-      if (!changeObj || typeof changeObj !== "object") continue;
-
-      const snapshot = readLocalSnapshot();
-      writeLocalSnapshot({ ...snapshot, ...changeObj });
+    // send to server
+    const resp = await apiPost(CHANGE_PUSH_ENDPOINT, { change: incremental });
+    if (!resp || !resp.ok) {
+      console.warn("[localSync] push failed", resp);
+      return false;
     }
-
-    localStorage.setItem(LOCAL_LAST_CHANGE_INDEX, String(idxArr.length));
+    // update local index
+    if (typeof resp.index === "number") setLocalIndex(resp.index);
+    return true;
   } catch (err) {
-    console.error("fetchAndApplyNewCloudChanges error", err);
+    console.error("[localSync] pushChangeLocalAndCloud error", err);
+    return false;
+  } finally {
+    _writing = false;
   }
 }
 
-/* ===== WATCHER ===== */
-let _watcher = null;
+// FETCH incremental changes from server and apply
+export async function fetchAndApplyNewCloudChanges() {
+  if (_writing) return;
+  if (_applying) return;
+  _applying = true;
+  try {
+    const localIdx = getLocalIndex();
+    const resp = await apiGet(GET_CHANGES_ENDPOINT, `from=${localIdx}`);
+    if (!resp || !resp.ok) return;
+    // if server returned changes (legacy array mode)
+    if (Array.isArray(resp.changes) && resp.changes.length) {
+      for (const item of resp.changes) {
+        if (!item || !item.change) continue;
+        const snapshot = readLocalSnapshot();
+        writeLocalSnapshot({ ...snapshot, ...item.change });
+      }
+      if (typeof resp.newIndex === "number") setLocalIndex(resp.newIndex);
+    } else {
+      // server signals snapshotNeeded or numeric mode change
+      if (resp.snapshotNeeded || (typeof resp.newIndex === "number" && resp.newIndex > localIdx)) {
+        // get full state and overwrite local snapshot (this follows your requirement: always read from cloud on new PC)
+        const sresp = await apiGet(GET_STATE_ENDPOINT);
+        if (sresp && sresp.ok) {
+          if (sresp.snapshot) {
+            writeLocalSnapshot(sresp.snapshot);
+            setLocalIndex(typeof sresp.indexNumber === "number" ? sresp.indexNumber : getLocalIndex());
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[localSync] fetchAndApplyNewCloudChanges error", err);
+  } finally {
+    _applying = false;
+  }
+}
 
+// BOOTSTRAP: always read from cloud (per your requirement)
+export async function bootstrapIfNeeded() {
+  try {
+    ensureDeviceId();
+    // Always fetch remote snapshot (you specified "ignore localStorage and get from cloud")
+    const resp = await apiGet(GET_STATE_ENDPOINT);
+    if (resp && resp.ok) {
+      if (resp.snapshot) {
+        // overwrite local snapshot with remote copy
+        window.__localSync__?.suspendAutoPush(true);
+        localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(resp.snapshot));
+        window.__localSync__?.suspendAutoPush(false);
+      } else {
+        // nothing remote: ensure local snapshot exists
+        if (!localStorage.getItem(SNAPSHOT_KEY)) localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({}));
+      }
+      // set local index pointer
+      if (typeof resp.indexNumber === "number") setLocalIndex(resp.indexNumber);
+      else setLocalIndex(0);
+      localStorage.setItem(BOOTSTRAP_FLAG, "yes");
+      console.log("[localSync] Bootstrap completed. index:", getLocalIndex());
+      return true;
+    } else {
+      console.warn("[localSync] bootstrap: server did not return snapshot", resp);
+      return false;
+    }
+  } catch (err) {
+    console.error("[localSync] bootstrapIfNeeded error", err);
+    return false;
+  }
+}
+
+// WATCHER
 export function startCloudWatcher(intervalMs = 2000) {
   stopCloudWatcher();
-  _watcher = setInterval(() => fetchAndApplyNewCloudChanges().catch(() => {}), intervalMs);
+  // initial
   fetchAndApplyNewCloudChanges().catch(() => {});
-  console.log("Cloud watcher started, interval:", intervalMs);
+  _watcher = setInterval(() => fetchAndApplyNewCloudChanges().catch(() => {}), intervalMs);
+  console.log("[localSync] Cloud watcher started, interval:", intervalMs);
 }
-
 export function stopCloudWatcher() {
-  if (_watcher) {
-    clearInterval(_watcher);
-    _watcher = null;
-    console.log("Cloud watcher stopped");
-  }
+  if (_watcher) { clearInterval(_watcher); _watcher = null; console.log("[localSync] Cloud watcher stopped"); }
 }
 
-/* ===== INTERCEPTOR DE localStorage.setItem ===== */
+// intercept localStorage.setItem for autopush
 (function () {
-  const originalSetItem = localStorage.setItem;
-  const suspendedKeys = new Set();
-
+  const original = localStorage.setItem;
+  const suspended = new Set();
   localStorage.setItem = function (key, value) {
-    originalSetItem.apply(this, arguments);
-
-    if (
-      window.__localSync__?.autoPush &&
-      !window.__localSync__._suspended &&    // ← *EVITA RECURSIÓN*
-      !suspendedKeys.has(key)
-    ) {
-      suspendedKeys.add(key);
-
-      window.__localSync__.autoPush(key, value)
-        .finally(() => suspendedKeys.delete(key))
-        .catch(err => console.warn("[localSync] autoPush error:", err));
+    original.apply(this, arguments);
+    if (key === LOCAL_INDEX_KEY || key === DEVICE_KEY || key === BOOTSTRAP_FLAG) return;
+    if (window.__localSync__?.autoPush && !window.__localSync__._suspended) {
+      // throttle handling via pushChangeLocalAndCloud internal throttle
+      if (!suspended.has(key)) {
+        suspended.add(key);
+        window.__localSync__.autoPush(key, value)
+          .finally(() => suspended.delete(key))
+          .catch(e => console.warn("[localSync] autoPush error:", e));
+      }
     }
   };
 })();
 
-/* ===== AUTOPUSH ===== */
 window.__localSync__ = {
-  autoPush: async (key, rawValue) => {
+  _suspended: false,
+  suspendAutoPush(flag = true) { this._suspended = !!flag; },
+  async autoPush(key, rawValue) {
     try {
       let value;
       try { value = JSON.parse(rawValue); } catch { value = rawValue; }
+      // push minimal change
       await pushChangeLocalAndCloud({ [key]: value });
-      console.log("[localSync] Cambio detectado y subido:", key);
-    } catch (e) {
-      console.warn("[localSync] Error enviando cambio incremental:", e);
+      console.log("[localSync] autoPush sent", key);
+    } catch (err) {
+      console.warn("[localSync] autoPush error", err);
     }
-  },
-
-  suspendAutoPush(flag) {
-    this._suspended = flag;
-  },
-
-  _suspended: false,
+  }
 };
 
+// auto-init on import
+(async () => {
+  try {
+    await bootstrapIfNeeded();
+    startCloudWatcher(2000);
+  } catch (e) {
+    console.error("[localSync] init error", e);
+  }
+})();
 
-/* ===== EXPORT DEFAULT ===== */
 export default {
   bootstrapIfNeeded,
   pushChangeLocalAndCloud,
@@ -297,5 +253,5 @@ export default {
   startCloudWatcher,
   stopCloudWatcher,
   readLocalSnapshot,
-  writeLocalSnapshot,
+  writeLocalSnapshot
 };
