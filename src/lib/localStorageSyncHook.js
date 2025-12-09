@@ -1,3 +1,5 @@
+import localSync from "./localSync";
+const { pushChangeLocalAndCloud } = localSync;
 import { pushChangeLocalAndCloud } from "./localSync";
 
 // Referencias originales

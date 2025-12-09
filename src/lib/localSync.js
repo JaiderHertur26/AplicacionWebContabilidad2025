@@ -288,7 +288,7 @@ window.__localSync__ = {
   _suspended: false,
 };
 
-export { pushChangeLocalAndCloud };
+
 /* ===== EXPORT DEFAULT ===== */
 export default {
   bootstrapIfNeeded,
