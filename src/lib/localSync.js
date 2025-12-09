@@ -1,6 +1,5 @@
 // /src/lib/localSync.js
-// Sincronización incremental local <-> Upstash (cliente)
-// Requisitos: tener VITE_UPSTASH_URL y VITE_UPSTASH_TOKEN en .env o usar valores directos
+// Sincronización incremental local <-> Upstash
 
 import { v4 as uuidv4 } from "uuid";
 
@@ -16,8 +15,8 @@ const CHANGE_PREFIX = "change_v1:";
 /* ===== LOCAL ===== */
 const LOCAL_STORAGE_BOOTSTRAP_FLAG = "bootstrapped_v1";
 const LOCAL_LAST_CHANGE_INDEX = "local_last_change_index_v1";
-const MAX_PAYLOAD_SIZE = 250_000; // 250 KB por push incremental
-const MAX_CHANGES_HISTORY = 200;  // Limite de cambios Upstash
+const MAX_PAYLOAD_SIZE = 250_000;
+const MAX_CHANGES_HISTORY = 200;
 
 /* ===== UTILS ===== */
 async function fetchJSON(url, options = {}) {
@@ -65,12 +64,13 @@ async function writeCloudKey(key, value) {
   }
 }
 
-// Divide objeto grande en sub-keys Upstash
+// Divide objetos grandes en partes
 async function writeLargePayload(keyPrefix, obj) {
   const entries = Object.entries(obj);
   let batch = {};
   let batchSize = 0;
   let batchIndex = 0;
+
   for (const [k, v] of entries) {
     const str = JSON.stringify({ [k]: v });
     if (str.length + batchSize > MAX_PAYLOAD_SIZE) {
@@ -82,9 +82,11 @@ async function writeLargePayload(keyPrefix, obj) {
     batch[k] = v;
     batchSize += str.length;
   }
+
   if (Object.keys(batch).length) {
     await writeCloudKey(`${keyPrefix}_${batchIndex}`, batch);
   }
+
   return true;
 }
 
@@ -117,8 +119,13 @@ export function readLocalSnapshot() {
 
 export function writeLocalSnapshot(obj) {
   try {
+    window.__localSync__.suspendAutoPush(true); // ← bloqueo recursión
     localStorage.setItem("APP_DATA_2025", JSON.stringify(obj, getCircularReplacer()));
-  } catch (err) { console.error("writeLocalSnapshot error", err); }
+  } catch (err) {
+    console.error("writeLocalSnapshot error", err);
+  } finally {
+    window.__localSync__.suspendAutoPush(false);
+  }
 }
 
 /* ===== BOOTSTRAP ===== */
@@ -150,29 +157,35 @@ export async function bootstrapIfNeeded() {
   } catch (err) { console.error("bootstrapIfNeeded error", err); }
 }
 
-/* ===== PUSH INCREMENTAL + LIMPIEZA AUTOMÁTICA ===== */
+/* ===== LIMPIEZA ===== */
 async function cleanupOldChanges(idxArr) {
   if (idxArr.length <= MAX_CHANGES_HISTORY) return idxArr;
   const removeCount = idxArr.length - MAX_CHANGES_HISTORY;
+
   for (let i = 0; i < removeCount; i++) {
     const oldId = idxArr[i];
-    // Limpiar cambios antiguos de Upstash
     await writeCloudKey(CHANGE_PREFIX + oldId, {});
   }
+
   return idxArr.slice(removeCount);
 }
 
+/* ===== PUSH INCREMENTAL ===== */
 export async function pushChangeLocalAndCloud(changeObj) {
   try {
     if (!changeObj || typeof changeObj !== "object") return false;
 
-    window.__localSync__?.suspendAutoPush(true);
+    window.__localSync__.suspendAutoPush(true);
 
     const snapshot = readLocalSnapshot();
     const incremental = {};
+
     Object.entries(changeObj).forEach(([k, v]) => {
-      if (JSON.stringify(snapshot[k]) !== JSON.stringify(v)) incremental[k] = v;
+      if (JSON.stringify(snapshot[k]) !== JSON.stringify(v)) {
+        incremental[k] = v;
+      }
     });
+
     if (!Object.keys(incremental).length) return false;
 
     writeLocalSnapshot({ ...snapshot, ...incremental });
@@ -183,17 +196,22 @@ export async function pushChangeLocalAndCloud(changeObj) {
     let idxArr = safeParse(await readCloudKey(CHANGES_INDEX_KEY), []);
     idxArr.push(id);
     idxArr = await cleanupOldChanges(idxArr);
-
     await writeCloudKey(CHANGES_INDEX_KEY, idxArr);
 
     localStorage.setItem(LOCAL_LAST_CHANGE_INDEX, String(idxArr.length));
 
     return true;
-  } catch (err) { console.error("pushChangeLocalAndCloud error", err); return false; }
-  finally { window.__localSync__?.suspendAutoPush(false); }
+
+  } catch (err) {
+    console.error("pushChangeLocalAndCloud error", err);
+    return false;
+
+  } finally {
+    window.__localSync__.suspendAutoPush(false);
+  }
 }
 
-/* ===== FETCH NUEVOS CAMBIOS ===== */
+/* ===== DESCARGA DE CAMBIOS ===== */
 export async function fetchAndApplyNewCloudChanges() {
   try {
     const idxArr = safeParse(await readCloudKey(CHANGES_INDEX_KEY), []);
@@ -206,16 +224,20 @@ export async function fetchAndApplyNewCloudChanges() {
       const id = idxArr[i];
       const changeObj = safeParse(await readCloudKey(CHANGE_PREFIX + id), {});
       if (!changeObj || typeof changeObj !== "object") continue;
+
       const snapshot = readLocalSnapshot();
       writeLocalSnapshot({ ...snapshot, ...changeObj });
     }
 
     localStorage.setItem(LOCAL_LAST_CHANGE_INDEX, String(idxArr.length));
-  } catch (err) { console.error("fetchAndApplyNewCloudChanges error", err); }
+  } catch (err) {
+    console.error("fetchAndApplyNewCloudChanges error", err);
+  }
 }
 
-/* ===== WATCHER AUTOMÁTICO ===== */
+/* ===== WATCHER ===== */
 let _watcher = null;
+
 export function startCloudWatcher(intervalMs = 2000) {
   stopCloudWatcher();
   _watcher = setInterval(() => fetchAndApplyNewCloudChanges().catch(() => {}), intervalMs);
@@ -224,18 +246,28 @@ export function startCloudWatcher(intervalMs = 2000) {
 }
 
 export function stopCloudWatcher() {
-  if (_watcher) { clearInterval(_watcher); _watcher = null; console.log("Cloud watcher stopped"); }
+  if (_watcher) {
+    clearInterval(_watcher);
+    _watcher = null;
+    console.log("Cloud watcher stopped");
+  }
 }
 
-/* ===== AUTO PUSH (SIN RECURSIÓN) ===== */
+/* ===== INTERCEPTOR DE localStorage.setItem ===== */
 (function () {
   const originalSetItem = localStorage.setItem;
   const suspendedKeys = new Set();
 
   localStorage.setItem = function (key, value) {
     originalSetItem.apply(this, arguments);
-    if (window.__localSync__?.autoPush && !suspendedKeys.has(key)) {
+
+    if (
+      window.__localSync__?.autoPush &&
+      !window.__localSync__._suspended &&    // ← *EVITA RECURSIÓN*
+      !suspendedKeys.has(key)
+    ) {
       suspendedKeys.add(key);
+
       window.__localSync__.autoPush(key, value)
         .finally(() => suspendedKeys.delete(key))
         .catch(err => console.warn("[localSync] autoPush error:", err));
@@ -243,6 +275,7 @@ export function stopCloudWatcher() {
   };
 })();
 
+/* ===== AUTOPUSH ===== */
 window.__localSync__ = {
   autoPush: async (key, rawValue) => {
     try {
@@ -250,13 +283,19 @@ window.__localSync__ = {
       try { value = JSON.parse(rawValue); } catch { value = rawValue; }
       await pushChangeLocalAndCloud({ [key]: value });
       console.log("[localSync] Cambio detectado y subido:", key);
-    } catch (e) { console.warn("[localSync] Error enviando cambio incremental:", e); }
+    } catch (e) {
+      console.warn("[localSync] Error enviando cambio incremental:", e);
+    }
   },
-  suspendAutoPush(flag) { this._suspended = flag; },
+
+  suspendAutoPush(flag) {
+    this._suspended = flag;
+  },
+
   _suspended: false,
 };
 
-/* ===== EXPORTS ===== */
+/* ===== EXPORT DEFAULT ===== */
 export default {
   bootstrapIfNeeded,
   pushChangeLocalAndCloud,
@@ -264,5 +303,5 @@ export default {
   startCloudWatcher,
   stopCloudWatcher,
   readLocalSnapshot,
-  writeLocalSnapshot
+  writeLocalSnapshot,
 };
