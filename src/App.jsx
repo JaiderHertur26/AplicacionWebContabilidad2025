@@ -1,3 +1,4 @@
+// App.jsx COMPLETO CON SINCRONIZACIÓN LOCAL–CLOUD
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
@@ -24,13 +25,15 @@ import { CompanyContext, useCompany } from '@/contexts/CompanyContext';
 
 export { useCompany };
 
-// ⬇️ ⬇️ ⬇️ IMPORTA TODAS LAS FUNCIONES DE SINCRONIZACIÓN
+// ⚡ Sync Hook
+import { useAppDataSync } from "@/hooks/useAppDataSync";
+
+// ⚡ Local-cloud automatic sync
 import {
   bootstrapIfNeeded,
   startCloudWatcher,
   stopCloudWatcher
 } from "@/lib/localSync";
-// ⬆️ ⬆️ ⬆️
 
 
 // ------------------------------
@@ -71,19 +74,16 @@ const InitialAccountsSetup = ({ children }) => {
 function App() {
 
   // -------------------------------------------------------------
-  // 🚀 BOOTSTRAP + WATCHER GLOBAL (PASOS 4, 7 Y 8)
+  // 🚀 BOOTSTRAP + WATCHER GLOBAL
   // -------------------------------------------------------------
   useEffect(() => {
     let mounted = true;
 
     async function bootAndWatch() {
       try {
-        await bootstrapIfNeeded();   // carga inicial desde Upstash si es necesario
+        await bootstrapIfNeeded();
         if (!mounted) return;
-
-        // Iniciar monitor de cambios desde la nube
-        startCloudWatcher(2000); // cada 2s revisa cambios nuevos (puedes bajar a 1000ms)
-
+        startCloudWatcher(2000);
         console.log("Bootstrap completado y watcher iniciado.");
       } catch (err) {
         console.error("Error durante bootstrap inicial:", err);
@@ -94,12 +94,15 @@ function App() {
 
     return () => {
       mounted = false;
-      try { stopCloudWatcher(); } catch {}
+      stopCloudWatcher();
     };
   }, []);
   // -------------------------------------------------------------
 
 
+  // ----------------------------
+  // ESTADOS PRINCIPALES
+  // ----------------------------
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeCompany, setActiveCompany] = useState(null);
   const [companies, setCompanies] = useState([]);
@@ -107,7 +110,24 @@ function App() {
   const [accessLevel, setAccessLevel] = useState('full');
   const [isConsolidated, setIsConsolidated] = useState(false);
 
-  // Cargar sesión
+
+  // -------------------------------------------------------------
+  // 🧠 Sincronización automática de estados con APP_DATA_2025
+  // -------------------------------------------------------------
+  useAppDataSync({
+    isAuthenticated: { value: isAuthenticated, set: setIsAuthenticated },
+    activeCompany: { value: activeCompany, set: setActiveCompany },
+    companies: { value: companies, set: setCompanies },
+    isGeneralAdmin: { value: isGeneralAdmin, set: setIsGeneralAdmin },
+    accessLevel: { value: accessLevel, set: setAccessLevel },
+    isConsolidated: { value: isConsolidated, set: setIsConsolidated }
+  });
+  // -------------------------------------------------------------
+
+
+  // -------------------------------------------------------------
+  // 🔐 Cargar sesión
+  // -------------------------------------------------------------
   useEffect(() => {
     const session = localStorage.getItem('auth_session');
     const storedAccessLevel = localStorage.getItem('auth_access_level') || 'full';
@@ -117,11 +137,13 @@ function App() {
         setIsAuthenticated(true);
         setIsGeneralAdmin(true);
         setAccessLevel('full');
+
         const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
         setCompanies(storedCompanies);
       } else {
         const storedCompanies = JSON.parse(localStorage.getItem('companies') || '[]');
         const loggedInCompany = storedCompanies.find(c => c.id === session);
+
         if (loggedInCompany) {
           setCompanies(storedCompanies);
           setActiveCompany(loggedInCompany);
@@ -140,6 +162,10 @@ function App() {
     }
   }, []);
 
+
+  // -------------------------------------------------------------
+  // 🔐 Login + Logout
+  // -------------------------------------------------------------
   const handleLogin = (loginData) => {
     setIsAuthenticated(true);
     const level = loginData.accessLevel || 'full';
@@ -154,7 +180,6 @@ function App() {
       setIsGeneralAdmin(false);
       setActiveCompany(loginData.company);
       localStorage.setItem('auth_session', loginData.company.id);
-
       setIsConsolidated(false);
       localStorage.removeItem(`${loginData.company.id}-consolidate`);
     }
@@ -179,6 +204,10 @@ function App() {
     localStorage.setItem(`${activeCompany.id}-consolidate`, String(value));
   };
 
+
+  // -------------------------------------------------------------
+  // CONTEXTO
+  // -------------------------------------------------------------
   const companyContextValue = {
     activeCompany,
     companies,
@@ -188,6 +217,7 @@ function App() {
     isConsolidated,
     toggleConsolidation
   };
+
 
   const MainApp = () => (
     <Layout onLogout={handleLogout}>
@@ -217,11 +247,15 @@ function App() {
     </Layout>
   );
 
+
   return (
     <>
       <Helmet>
         <title>JaiderHerTur26 - Sistema de Contabilidad</title>
-        <meta name="description" content="Gestiona tu contabilidad de forma profesional con JaiderHerTur26." />
+        <meta
+          name="description"
+          content="Gestiona tu contabilidad de forma profesional con JaiderHerTur26."
+        />
       </Helmet>
 
       <CompanyContext.Provider value={companyContextValue}>
