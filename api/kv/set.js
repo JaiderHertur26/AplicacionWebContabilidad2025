@@ -1,22 +1,21 @@
 export default async function handler(req, res) {
-  const { key, value } = req.body;
-
   try {
-    const url = `${process.env.UPSTASH_REST_URL}/set/${key}`;
-    
-    const response = await fetch(url, {
+    const { key, value } = req.body;
+    const url = `${process.env.VITE_UPSTASH_URL}/SET/${encodeURIComponent(key)}`;
+
+    const r = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.UPSTASH_REST_TOKEN}`,
+        Authorization: `Bearer ${process.env.VITE_UPSTASH_TOKEN}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ value })
+      body: JSON.stringify(value)
     });
 
-    const data = await response.json();
-    res.status(200).json(data);
-  } catch (e) {
-    console.error("SET Error", e);
-    res.status(500).json({ error: "kv-set-failed" });
+    const json = await r.json();
+    res.status(200).json(json);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: String(err) });
   }
 }

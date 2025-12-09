@@ -32,8 +32,8 @@ async function fetchJSON(url, options = {}) {
 
 async function readCloudKey(key) {
   try {
-    const url = `${UPSTASH_URL}/GET/${encodeURIComponent(key)}`;
-    const json = await fetchJSON(url, { method: "GET" });
+    const res = await fetch(`/api/kv/get?key=${encodeURIComponent(key)}`);
+    const json = await res.json();
     return json.result ?? null;
   } catch (err) {
     console.error("readCloudKey error", key, err);
@@ -41,28 +41,21 @@ async function readCloudKey(key) {
   }
 }
 
+
 async function writeCloudKey(key, value) {
   try {
-    const payload = JSON.stringify(value, getCircularReplacer());
-    if (payload.length > MAX_PAYLOAD_SIZE) {
-      return await writeLargePayload(key, value);
-    }
-    const url = `${UPSTASH_URL}/SET/${encodeURIComponent(key)}`;
-    const resp = await fetch(url, {
+    const res = await fetch(`/api/kv/set`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, "Content-Type": "application/json" },
-      body: payload,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, value })
     });
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => "");
-      throw new Error(`writeCloudKey HTTP ${resp.status} - ${text}`);
-    }
-    return true;
+    return res.ok;
   } catch (err) {
     console.error("writeCloudKey error", key, err);
     return false;
   }
 }
+
 
 // Divide objetos grandes en partes
 async function writeLargePayload(keyPrefix, obj) {
